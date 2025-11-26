@@ -90,3 +90,25 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: "서버 내부 오류" });
   }
 };
+
+// 내 정보 조회 (보호된 라우트)
+exports.getMe = async (req, res) => {
+  try {
+    // 미들웨어가 붙여준 req.user 덕분에 누가 요청했는지 알 수 있음!
+    // (패스워드는 보안상 제외하고 조회)
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { id: true, email: true, nickname: true, createdAt: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+
+    res.json({ user });
+
+  } catch (error) {
+    console.error("GetMe Error:", error);
+    res.status(500).json({ error: "서버 오류" });
+  }
+};

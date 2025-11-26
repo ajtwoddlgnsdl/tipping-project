@@ -1,4 +1,6 @@
-### 회원가입 테스트
+### -------------------------------------------
+### 👇 회원가입 테스트
+### -------------------------------------------
 POST http://localhost:3000/api/auth/register
 Content-Type: application/json
 
@@ -8,7 +10,9 @@ Content-Type: application/json
   "nickname": "SuccessMan"
 }
 
-### 로그인 테스트
+### -------------------------------------------
+### 👇 로그인 테스트
+### -------------------------------------------
 POST http://localhost:3000/api/auth/login
 Content-Type: application/json
 
@@ -16,3 +20,17 @@ Content-Type: application/json
   "email": "final@test.com",
   "password": "1234"
 }
+
+### -------------------------------------------
+### 👇 검문소(Middleware) 테스트
+### -------------------------------------------
+
+### 1. 토큰 없이 내 정보 요청 (실패해야 함)
+GET http://localhost:3000/api/auth/me
+Content-Type: application/json
+
+### 2. 토큰 넣고 내 정보 요청 (성공해야 함)
+# 중요: 아래 Bearer 뒤에 아까 로그인 테스트에서 받은 긴~ 토큰값을 복사해서 붙여넣으세요!
+GET http://localhost:3000/api/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiZmluYWxAdGVzdC5jb20iLCJpYXQiOjE3NjQxNDI1MjcsImV4cCI6MTc2NDIyODkyN30.eiJD7dq6rExbqpqTKwmSORyimaT0kPmoRRCEWCfQW5w
+Content-Type: application/json
