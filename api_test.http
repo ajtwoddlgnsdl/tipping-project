@@ -34,3 +34,28 @@ Content-Type: application/json
 GET http://localhost:3000/api/auth/me
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiZmluYWxAdGVzdC5jb20iLCJpYXQiOjE3NjQxNDI1MjcsImV4cCI6MTc2NDIyODkyN30.eiJD7dq6rExbqpqTKwmSORyimaT0kPmoRRCEWCfQW5w
 Content-Type: application/json
+
+### -------------------------------------------
+### 👇 찜 목록(Wishlist) 테스트
+### -------------------------------------------
+
+### 1. 찜 하기 (AI가 찾은 최저가 저장)
+# Authorization 헤더에 아까 로그인한 토큰을 꼭 넣으세요!
+POST http://localhost:3000/api/wishlist
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiZmluYWxAdGVzdC5jb20iLCJpYXQiOjE3NjQxNDI1MjcsImV4cCI6MTc2NDIyODkyN30.eiJD7dq6rExbqpqTKwmSORyimaT0kPmoRRCEWCfQW5w
+
+{
+  "productTitle": "알리발 3천원 티셔츠 (국내쇼핑몰 3만원짜리)",
+  "price": 3000,
+  "imageUrl": "https://example.com/cheap_shirt.jpg",
+  "productLink": "https://aliexpress.com/item/12345"
+}
+
+### 2. 내 찜 목록 조회
+GET http://localhost:3000/api/wishlist
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiZmluYWxAdGVzdC5jb20iLCJpYXQiOjE3NjQxNDI1MjcsImV4cCI6MTc2NDIyODkyN30.eiJD7dq6rExbqpqTKwmSORyimaT0kPmoRRCEWCfQW5w
+
+### 3. 찜 삭제 (ID는 조회 결과 보고 넣으세요. 예: 1)
+DELETE http://localhost:3000/api/wishlist/5
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiZmluYWxAdGVzdC5jb20iLCJpYXQiOjE3NjQxNDI1MjcsImV4cCI6MTc2NDIyODkyN30.eiJD7dq6rExbqpqTKwmSORyimaT0kPmoRRCEWCfQW5w
