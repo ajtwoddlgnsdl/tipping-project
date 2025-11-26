@@ -1,0 +1,13 @@
+# 의존성 모듈
+node_modules/
+
+# 빌드 결과물
+dist/
+build/
+
+# 환경 변수 (보안상 절대 커밋 금지)
+.env
+
+# OS 시스템 파일
+.DS_Store
+Thumbs.db
