@@ -67,6 +67,7 @@ exports.searchImage = async (req, res) => {
       });
 
       targetUrl = imgbbResponse.data.data.url;
+      fs.unlinkSync(req.file.path);
     }
 
     if (!targetUrl) {
