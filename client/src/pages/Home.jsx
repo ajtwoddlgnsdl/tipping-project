@@ -163,16 +163,47 @@ export default function Home() {
                     </div>
                 )}
                 {/* 2. 검색 결과 리스트 */}
-                {results.length > 0 && (
+                {!loading && results.length > 0 && (
                     <div className="animate-fade-in-up">
-                        <h3 className="mb-6 text-2xl font-bold text-gray-900">
-                            검색 결과 <span className="text-blue-600">{results.length}</span>개
-                        </h3>
-                        <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                            {results.map((item, index) => (
-                                <ProductCard key={index} item={item} />
-                            ))}
-                        </div>
+
+                        {/* 1. 가격 정보가 있는 상품 (Shopping) */}
+                        {results.filter(item => item.price > 0).length > 0 && (
+                            <div className="mb-12">
+                                <h3 className="flex items-center gap-2 mb-6 text-2xl font-bold text-gray-900">
+                                    <span>💰 AI가 찾은 최저가</span>
+                                    <span className="px-2 py-1 text-sm text-white bg-blue-600 rounded-full">
+                                        {results.filter(item => item.price > 0).length}개
+                                    </span>
+                                </h3>
+                                <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                                    {results
+                                        .filter(item => item.price > 0) // 가격 있는 것만 필터링
+                                        .map((item, index) => (
+                                            <ProductCard key={`shop-${index}`} item={item} />
+                                        ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 2. 가격 정보는 없지만 비슷한 상품 (Visual) */}
+                        {results.filter(item => item.price === 0).length > 0 && (
+                            <div>
+                                <h3 className="flex items-center gap-2 mb-6 text-2xl font-bold text-gray-900">
+                                    <span>📷 유사한 스타일 (가격 확인 필요)</span>
+                                    <span className="px-2 py-1 text-sm text-gray-600 bg-gray-200 rounded-full">
+                                        {results.filter(item => item.price === 0).length}개
+                                    </span>
+                                </h3>
+                                <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 opacity-80 hover:opacity-100 transition-opacity">
+                                    {results
+                                        .filter(item => item.price === 0) // 가격 없는 것만 필터링
+                                        .map((item, index) => (
+                                            <ProductCard key={`visual-${index}`} item={item} />
+                                        ))}
+                                </div>
+                            </div>
+                        )}
+
                     </div>
                 )}
             </main>
