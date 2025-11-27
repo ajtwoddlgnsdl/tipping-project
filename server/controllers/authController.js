@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const axios = require('axios');
 const prisma = require('../config/db'); // 아까 만든 DB 연결 가져오기
 
 exports.register = async (req, res) => {
@@ -9,6 +10,12 @@ exports.register = async (req, res) => {
     // 1. 유효성 검사
     if (!email || !password) {
       return res.status(400).json({ error: "이메일과 비밀번호는 필수입니다." });
+    }
+
+    // [추가] 비밀번호 유효성 검사
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ error: "비밀번호는 영문, 숫자 포함 8자 이상이어야 합니다." });
     }
 
     // 2. 이미 있는 이메일인지 확인
@@ -88,6 +95,54 @@ exports.login = async (req, res) => {
   } catch (error) {
     console.error("Login Error:", error);
     res.status(500).json({ error: "서버 내부 오류" });
+  }
+};
+
+// [신규] 구글 로그인 처리
+exports.googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body; // 프론트에서 받은 구글 토큰
+
+    // 1. 구글 서버에 "이 토큰 진짜야? 누구 거야?" 라고 물어봄
+    const googleResponse = await axios.get(`https://www.googleapis.com/oauth2/v3/userinfo`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const { sub: snsId, email, name, picture } = googleResponse.data;
+
+    // 2. 우리 DB에 이메일로 가입된 유저가 있는지 확인
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // 3. 없으면? -> 자동 회원가입 시킴!
+      // 비밀번호는 없음(null), provider는 'google'
+      user = await prisma.user.create({
+        data: {
+          email,
+          nickname: name,
+          snsId,
+          provider: 'google',
+          password: null, // 중요!
+        },
+      });
+    }
+
+    // 4. 우리 서비스 전용 JWT 토큰 발급 (기존 로그인과 동일)
+    const jwtToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.status(200).json({
+      message: "구글 로그인 성공",
+      token: jwtToken,
+      user: { id: user.id, nickname: user.nickname }
+    });
+
+  } catch (error) {
+    console.error("Google Login Error:", error);
+    res.status(500).json({ error: "구글 로그인 처리 실패" });
   }
 };
 
