@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import axios from '../api/axios'; // 우리가 만든 설정된 axios 가져오기
 
 export default function Login() {
@@ -32,7 +33,7 @@ export default function Login() {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user)); // 유저 정보도 저장
 
-      alert(`환영합니다, ${user.nickname}님! 👋`);
+      toast.success(`환영합니다, ${response.data.user.nickname}님! 👋`);
       
       // 3. 메인 페이지로 이동
       navigate('/');
@@ -40,7 +41,7 @@ export default function Login() {
     } catch (error) {
       // 실패 시 에러 메시지 띄우기
       console.error(error);
-      alert(error.response?.data?.error || "로그인에 실패했습니다.");
+      toast.error(error.response?.data?.error || "로그인 실패! 아이디/비번을 확인하세요.");
     }
   };
 

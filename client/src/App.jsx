@@ -1,4 +1,9 @@
+// client/src/App.jsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+// 👇 [추가] Toast 관련 임포트
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css'; 
+
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -7,7 +12,20 @@ import Wishlist from './pages/Wishlist';
 function App() {
   return (
     <BrowserRouter>
-      {/* 화면 전체를 감싸는 컨테이너 */}
+      {/* 👇 [추가] 알림판 설치 (위치, 시간 설정 등) */}
+      <ToastContainer 
+        position="top-center" // 화면 상단 중앙에 뜸
+        autoClose={2000}      // 2초 뒤에 자동 사라짐
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"         // light, dark, colored 중 선택 가능
+      />
+      
       <div className="min-h-screen bg-gray-50">
         <Routes>
           <Route path="/" element={<Home />} />

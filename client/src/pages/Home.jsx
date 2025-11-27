@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone'; // 드래그 앤 드롭 라이브러리
 import axios from '../api/axios';
+import { toast } from 'react-toastify';
 import ProductCard from '../components/ProductCard';
 
 export default function Home() {

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import axios from '../api/axios';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 // isWishlistMode: true면 '삭제' 버튼, false면 '찜하기' 버튼을 보여줌
 export default function ProductCard({ item, isWishlistMode = false, onDelete }) {
@@ -34,11 +35,11 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
       });
 
       setIsLiked(true); // 하트 빨갛게 채우기
-      alert("찜 목록에 저장되었습니다! ❤️");
+      toast.success("찜 목록에 저장되었습니다! ❤️");
 
     } catch (error) {
       console.error(error);
-      alert("이미 저장되었거나 오류가 발생했습니다.");
+      toast.error("이미 저장되었거나 오류가 발생했습니다.");
     }
   };
 

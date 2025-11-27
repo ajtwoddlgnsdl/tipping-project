@@ -1,6 +1,7 @@
 // client/src/pages/Register.jsx
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import axios from '../api/axios';
 
 export default function Register() {
@@ -28,7 +29,7 @@ export default function Register() {
 
     // 1. 비밀번호 일치 확인 (프론트엔드 유효성 검사)
     if (formData.password !== formData.confirmPassword) {
-      return alert("비밀번호가 서로 다릅니다!");
+      return toast.warning("비밀번호가 서로 다릅니다!");
     }
 
     try {
@@ -40,7 +41,7 @@ export default function Register() {
         nickname: formData.nickname
       });
 
-      alert("회원가입이 완료되었습니다! 로그인 해주세요.");
+      toast.success("회원가입 완료! 로그인 해주세요. 🎉");
       
       // 3. 로그인 페이지로 이동
       navigate('/login');
@@ -48,7 +49,7 @@ export default function Register() {
     } catch (error) {
       console.error(error);
       // 백엔드에서 보내준 에러 메시지 (예: 이미 존재하는 이메일입니다) 띄우기
-      alert(error.response?.data?.error || "회원가입 실패");
+      toast.error(error.response?.data?.error || "회원가입 실패");
     }
   };
 
