@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { GoogleLogin } from '@react-oauth/google';
 import axios from '../api/axios';
@@ -48,6 +49,43 @@ export default function Login() {
       console.error(error);
       toast.error("구글 로그인 실패");
     }
+  };
+
+  useEffect(() => {
+    // window.Kakao가 있고, 아직 초기화 안 됐으면 초기화
+    if (window.Kakao && !window.Kakao.isInitialized()) {
+      // 👇 여기에 아까 복사한 'JavaScript 키'를 넣으세요!
+      window.Kakao.init('YOUR_KAKAO_JAVASCRIPT_KEY');
+    }
+  }, []);
+
+  // [추가] 카카오 로그인 버튼 클릭 시 실행
+  const handleKakaoLogin = () => {
+    window.Kakao.Auth.login({
+      success: async (authObj) => {
+        try {
+          // 1. 카카오가 준 토큰(access_token)을 백엔드로 보냄
+          const response = await axios.post('/auth/kakao', {
+            token: authObj.access_token
+          });
+
+          // 2. 백엔드 응답 처리 (구글과 동일)
+          const { token, user } = response.data;
+          localStorage.setItem('token', token);
+          localStorage.setItem('user', JSON.stringify(user));
+
+          toast.success(`카카오 로그인 성공! 반가워요 ${user.nickname}님`);
+          navigate('/');
+        } catch (error) {
+          console.error(error);
+          toast.error("카카오 로그인 서버 처리 실패");
+        }
+      },
+      fail: (err) => {
+        console.error(err);
+        toast.error("카카오 로그인 실패");
+      },
+    });
   };
 
   return (
@@ -111,6 +149,18 @@ export default function Login() {
               onError={() => toast.error("구글 로그인 실패")}
             />
           </div>
+          {/* 👇 [추가] 카카오 로그인 버튼 (노란색 커스텀 디자인) */}
+          <button
+            type="button"
+            onClick={handleKakaoLogin}
+            className="w-full flex justify-center items-center gap-2 py-2.5 bg-[#FEE500] hover:bg-[#FDD835] text-[#3c1e1e] font-medium rounded text-sm transition-colors"
+          >
+            {/* 카카오 심볼 아이콘 (SVG) */}
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
+              <path d="M12 3C5.373 3 0 6.663 0 11.18c0 2.87 1.866 5.397 4.795 6.877-.216.793-1.42 5.203-1.47 5.642 0 0-.028.232.126.321.154.088.344.02.344.02 4.62-3.167 5.426-3.722 5.662-3.794.527.076 1.07.118 1.626.118 6.627 0 12-3.663 12-8.18C24 6.663 18.627 3 12 3z" />
+            </svg>
+            카카오로 시작하기
+          </button>
         </div>
 
         {/* 3. 회원가입 링크 */}

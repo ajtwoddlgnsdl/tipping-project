@@ -8,5 +8,6 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.get('/me', authenticateToken, authController.getMe);
 router.post('/google', authController.googleLogin);
+router.post('/kakao', authController.kakaoLogin);
 
 module.exports = router;

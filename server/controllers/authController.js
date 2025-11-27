@@ -146,6 +146,59 @@ exports.googleLogin = async (req, res) => {
   }
 };
 
+// 👇 [추가] 카카오 로그인 처리
+exports.kakaoLogin = async (req, res) => {
+  try {
+    const { token } = req.body; // 프론트에서 받은 카카오 토큰
+
+    // 1. 카카오 서버에 유저 정보 요청
+    const kakaoResponse = await axios.get('https://kapi.kakao.com/v2/user/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    // 2. 카카오가 준 정보 파싱
+    const snsId = String(kakaoResponse.data.id); // 숫자일 수 있어서 문자로 변환
+    const { nickname } = kakaoResponse.data.properties;
+    const email = kakaoResponse.data.kakao_account.email; // 선택 동의라 없을 수도 있음
+
+    // 3. 이메일이 없으면 가짜 이메일 생성 (카카오는 이메일이 필수 아닐 수 있음)
+    // 예: kakao_12345@social.com
+    const userEmail = email || `kakao_${snsId}@social.com`;
+
+    // 4. DB 조회 및 가입 (구글 로직과 동일)
+    let user = await prisma.user.findUnique({ where: { email: userEmail } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email: userEmail,
+          nickname: nickname,
+          snsId: snsId,
+          provider: 'kakao', // provider는 kakao
+          password: null,
+        },
+      });
+    }
+
+    // 5. JWT 발급
+    const jwtToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.status(200).json({
+      message: "카카오 로그인 성공",
+      token: jwtToken,
+      user: { id: user.id, nickname: user.nickname }
+    });
+
+  } catch (error) {
+    console.error("Kakao Login Error:", error);
+    res.status(500).json({ error: "카카오 로그인 처리 실패" });
+  }
+};
+
 // 내 정보 조회 (보호된 라우트)
 exports.getMe = async (req, res) => {
   try {
