@@ -1,41 +1,81 @@
+// server/controllers/searchController.js
 const { getJson } = require("serpapi");
 const fs = require('fs');
 const axios = require('axios');
 const FormData = require('form-data');
 
+// 💡 [수정됨] 환율 계산기 (로그 기반 정밀 보정)
+const exchangeToKRW = (price, currency) => {
+  if (!price) return 0;
+  
+  // 통화 기호를 확실하게 비교하기 위해 대문자로 변환 및 공백 제거
+  const curr = currency.toString().toUpperCase().trim();
+
+  // 1. 이미 원화인 경우
+  if (curr.includes('KRW') || curr.includes('₩')) {
+    return Math.round(price);
+  }
+
+  // 2. 미국 달러 (USD, $, US$)
+  if (curr.includes('USD') || curr === '$' || curr.includes('US$')) {
+    return Math.round(price * 1430); 
+  }
+
+  // 3. 일본 엔화 (JPY, ¥, JP¥)
+  if (curr.includes('JPY') || curr === '¥' || curr.includes('JP¥')) {
+    return Math.round(price * 9.5);
+  }
+
+  // 4. 유로 (EUR, €)
+  if (curr.includes('EUR') || curr.includes('€')) {
+    return Math.round(price * 1550);
+  }
+
+  // 5. 파운드 (GBP, £)
+  if (curr.includes('GBP') || curr.includes('£')) {
+    return Math.round(price * 1800);
+  }
+
+  // 6. 호주 달러 (AUD, AU$) - 로그에 발견됨!
+  if (curr.includes('AUD') || curr.includes('AU$')) {
+    return Math.round(price * 930);
+  }
+
+  // 7. 대만 달러 (TWD, NT$) - 로그에 발견됨!
+  if (curr.includes('TWD') || curr.includes('NT$')) {
+    return Math.round(price * 44);
+  }
+
+  // 모르는 통화면 일단 그대로 반환 (로그 찍어서 확인)
+  console.log(`⚠️ 변환 실패 통화 발견: ${curr}`);
+  return Math.round(price);
+};
+
 exports.searchImage = async (req, res) => {
   try {
-    let targetUrl = req.body.imageUrl; // 1. URL이 있으면 그걸 씀
+    let targetUrl = req.body.imageUrl;
 
-    // 2. 파일이 업로드되었다면? ImgBB로 보내서 URL을 따옴 (징검다리)
+    // 1. 파일 업로드 처리
     if (req.file) {
-      console.log(`📤 이미지 호스팅 서버(ImgBB)로 업로드 중...`);
-      
+      console.log(`📤 이미지 호스팅 중...`);
       const formData = new FormData();
-      // ImgBB API 요구사항에 맞춰 파일 데이터 주입
       formData.append('image', fs.createReadStream(req.file.path));
-      formData.append('key', process.env.IMGBB_KEY); // 내 API 키
+      formData.append('key', process.env.IMGBB_KEY);
 
-      // ImgBB API 호출
       const imgbbResponse = await axios.post('https://api.imgbb.com/1/upload', formData, {
         headers: { ...formData.getHeaders() }
       });
 
-      // 성공하면 공인 URL(http://...)을 받음
       targetUrl = imgbbResponse.data.data.url;
-      console.log(`🌐 변환된 공인 URL: ${targetUrl}`);
-      
-      // (선택) 다 썼으니 로컬 파일은 삭제 (청소)
-      fs.unlinkSync(req.file.path);
     }
 
     if (!targetUrl) {
-      return res.status(400).json({ error: "이미지 파일이나 URL이 필요합니다." });
+      return res.status(400).json({ error: "이미지나 URL이 필요합니다." });
     }
 
-    console.log(`🔍 구글 렌즈 검색 시작: ${targetUrl}`);
+    console.log(`🔍 검색 및 환율 변환 시작: ${targetUrl}`);
 
-    // 3. 확보된 URL로 SerpApi 검색 (기존 로직과 동일)
+    // 2. SerpApi 검색
     getJson({
       engine: "google_lens",
       url: targetUrl,
@@ -47,33 +87,35 @@ exports.searchImage = async (req, res) => {
 
       let parsedResults = [];
 
-      // 쇼핑 결과 우선
-      if (json.shopping_results) {
-        const shoppingItems = json.shopping_results.map(item => ({
+      // 데이터 가공 함수
+      const parseItem = (item, type) => {
+        const rawPrice = item.price ? item.price.extracted_value : 0;
+        const rawCurrency = item.price ? item.price.currency : 'KRW';
+        
+        // ★ 환율 변환 실행
+        const krwPrice = exchangeToKRW(rawPrice, rawCurrency);
+
+        return {
           title: item.title,
-          price: item.price ? item.price.extracted_value : 0,
-          currency: item.price ? item.price.currency : 'KRW',
+          price: krwPrice,       // 변환된 한국 가격
+          currency: 'KRW',       // 이제 화면엔 '₩'로 표시됨
+          originalPrice: rawPrice, // (참고용) 원래 가격
+          originalCurrency: rawCurrency, // (참고용) 원래 통화
           thumbnail: item.thumbnail,
           link: item.link,
           source: item.source,
-          type: 'shopping'
-        }));
-        parsedResults = [...parsedResults, ...shoppingItems];
+          type: type
+        };
+      };
+
+      if (json.shopping_results) {
+        parsedResults = [...parsedResults, ...json.shopping_results.map(i => parseItem(i, 'shopping'))];
       }
 
-      // 시각적 결과 (가격 있는 것만)
       if (json.visual_matches) {
         const visualItems = json.visual_matches
-          .filter(item => item.price)
-          .map(item => ({
-            title: item.title,
-            price: item.price.extracted_value,
-            currency: item.price.currency,
-            thumbnail: item.thumbnail,
-            link: item.link,
-            source: item.source,
-            type: 'visual'
-          }));
+          .filter(i => i.price)
+          .map(i => parseItem(i, 'visual'));
         parsedResults = [...parsedResults, ...visualItems];
       }
 
@@ -81,7 +123,6 @@ exports.searchImage = async (req, res) => {
         return res.status(404).json({ error: "가격 정보를 찾지 못했습니다." });
       }
 
-      // 최저가 정렬
       const sortedResults = parsedResults
         .filter(item => item.price > 0)
         .sort((a, b) => a.price - b.price);
@@ -89,15 +130,14 @@ exports.searchImage = async (req, res) => {
       res.json({
         message: "검색 성공!",
         count: sortedResults.length,
-        searchImage: targetUrl, // 검색에 쓴 이미지 주소도 알려줌
+        searchImage: targetUrl,
         results: sortedResults
       });
     });
 
   } catch (error) {
-    console.error("Search/Upload Error:", error);
-    // 에러 시 파일 청소
+    console.error("Search Error:", error);
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: "서버 내부 오류 (이미지 업로드 실패 등)" });
+    res.status(500).json({ error: "서버 오류" });
   }
 };

@@ -1,67 +1,172 @@
+// client/src/pages/Home.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useDropzone } from 'react-dropzone'; // 드래그 앤 드롭 라이브러리
+import axios from '../api/axios';
+import ProductCard from '../components/ProductCard';
 
 export default function Home() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+    const navigate = useNavigate();
+    const [user, setUser] = useState(null);
 
-  // 화면이 켜질 때 딱 한 번 실행됨
-  useEffect(() => {
-    // 1. 저장된 토큰과 유저 정보가 있는지 확인
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+    // 상태 관리 (State)
+    const [file, setFile] = useState(null);       // 업로드할 파일
+    const [preview, setPreview] = useState(null); // 미리보기 이미지 URL
+    const [loading, setLoading] = useState(false); // 로딩 중인가?
+    const [results, setResults] = useState([]);    // 검색 결과 리스트
 
-    if (token && storedUser) {
-      setUser(JSON.parse(storedUser)); // 유저 정보 상태에 저장
-    }
-  }, []);
+    // 1. 유저 정보 불러오기
+    useEffect(() => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) setUser(JSON.parse(storedUser));
+    }, []);
 
-  // 로그아웃 함수
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    alert("로그아웃 되었습니다.");
-  };
+    // 2. 드래그 앤 드롭 설정
+    const onDrop = (acceptedFiles) => {
+        const selectedFile = acceptedFiles[0];
+        setFile(selectedFile);
+        // 미리보기 URL 생성
+        setPreview(URL.createObjectURL(selectedFile));
+    };
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <h1 className="mb-4 text-5xl font-extrabold text-blue-600">Tipping</h1>
-      <p className="mb-8 text-xl text-gray-600">이미지로 찾는 진짜 최저가</p>
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        onDrop,
+        accept: { 'image/*': [] }, // 이미지만 허용
+        multiple: false // 한 번에 하나만
+    });
 
-      {user ? (
-        // 로그인 했을 때 보이는 화면
-        <div className="text-center">
-          <p className="mb-4 text-2xl font-bold">
-            안녕하세요, <span className="text-blue-500">{user.nickname}</span>님!
-          </p>
-          <div className="space-x-4">
-            <button className="px-6 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600">
-              이미지 검색 시작
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="px-6 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
-            >
-              로그아웃
-            </button>
-          </div>
+    // 3. 검색 실행 함수
+    const handleSearch = async () => {
+        if (!file) return alert("이미지를 먼저 올려주세요!");
+
+        setLoading(true); // 로딩 시작
+        setResults([]);   // 기존 결과 초기화
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            // 백엔드 검색 API 호출 (파일 전송)
+            const response = await axios.post('/search', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            console.log("검색 결과:", response.data);
+            setResults(response.data.results); // 결과 저장
+
+        } catch (error) {
+            console.error(error);
+            alert("검색 중 오류가 발생했습니다. (백엔드 로그 확인)");
+        } finally {
+            setLoading(false); // 로딩 끝
+        }
+    };
+
+    // 로그아웃
+    const handleLogout = () => {
+        localStorage.clear();
+        setUser(null);
+        navigate('/login');
+    };
+
+    return (
+        <div className="min-h-screen pb-20 bg-gray-50">
+            {/* 헤더 (네비게이션) */}
+            <nav className="bg-white shadow-sm">
+                <div className="flex items-center justify-between px-4 py-4 mx-auto max-w-7xl">
+                    <h1 className="text-2xl font-extrabold text-blue-600 cursor-pointer" onClick={() => window.location.reload()}>
+                        Tipping
+                    </h1>
+                    <div>
+                        {user ? (
+                            <div className="flex items-center gap-4">
+                                {/* 👇 [추가된 부분] 찜 목록 버튼 */}
+                                <Link to="/wishlist" className="flex items-center gap-1 text-gray-600 hover:text-red-500">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                                    <span className="hidden sm:inline">찜 목록</span>
+                                </Link>
+
+                                <span className="ml-2 text-gray-400">|</span>
+                                <span className="text-gray-600"><b>{user.nickname}</b>님</span>
+                                <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-500">로그아웃</button>
+                            </div>
+                        ) : (
+                            <Link to="/login" className="font-bold text-blue-500 hover:text-blue-600">로그인</Link>
+                        )}
+                    </div>
+                </div>
+            </nav>
+
+            {/* 메인 컨텐츠 */}
+            <main className="px-4 mx-auto mt-10 max-w-7xl">
+
+                {/* 1. 검색 영역 (중앙 정렬) */}
+                <div className="max-w-2xl mx-auto mb-16 text-center">
+                    <h2 className="mb-2 text-3xl font-bold text-gray-900">어떤 옷을 찾으시나요?</h2>
+                    <p className="mb-8 text-gray-500">이미지를 올리면 AI가 최저가를 찾아드립니다.</p>
+
+                    {/* 드래그 앤 드롭 박스 */}
+                    <div
+                        {...getRootProps()}
+                        className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-xl cursor-pointer transition-colors
+              ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white hover:border-blue-400'}`}
+                    >
+                        <input {...getInputProps()} />
+
+                        {preview ? (
+                            // 이미지가 선택되었을 때 미리보기
+                            <div className="relative w-full h-full p-2">
+                                <img src={preview} alt="Preview" className="object-contain w-full h-full rounded-lg" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-10">
+                                    <span className="px-3 py-1 text-xs text-white bg-black rounded-full bg-opacity-60">이미지 변경하기</span>
+                                </div>
+                            </div>
+                        ) : (
+                            // 이미지가 없을 때 안내 문구
+                            <div className="flex flex-col items-center p-6 text-gray-500">
+                                <svg className="w-12 h-12 mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <p className="font-medium">클릭하여 이미지 업로드</p>
+                                <p className="text-sm">또는 여기로 파일을 끌어오세요</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 검색 버튼 */}
+                    <button
+                        onClick={handleSearch}
+                        disabled={!file || loading}
+                        className={`w-full py-4 mt-6 text-lg font-bold text-white rounded-xl transition-all shadow-lg
+              ${!file ? 'bg-gray-300 cursor-not-allowed' :
+                                loading ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl'}`}
+                    >
+                        {loading ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                AI가 열심히 찾는 중...
+                            </span>
+                        ) : "최저가 찾기 (Search)"}
+                    </button>
+                </div>
+
+                {/* 2. 검색 결과 리스트 */}
+                {results.length > 0 && (
+                    <div className="animate-fade-in-up">
+                        <h3 className="mb-6 text-2xl font-bold text-gray-900">
+                            검색 결과 <span className="text-blue-600">{results.length}</span>개
+                        </h3>
+                        <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                            {results.map((item, index) => (
+                                <ProductCard key={index} item={item} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </main>
         </div>
-      ) : (
-        // 로그인 안 했을 때 보이는 화면
-        <div className="space-x-4">
-          <Link to="/login">
-            <button className="px-6 py-3 font-bold text-white bg-blue-500 rounded-lg hover:bg-blue-600">
-              로그인
-            </button>
-          </Link>
-          <Link to="/register">
-            <button className="px-6 py-3 font-bold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100">
-              회원가입
-            </button>
-          </Link>
-        </div>
-      )}
-    </div>
-  );
+    );
 }
