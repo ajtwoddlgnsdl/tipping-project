@@ -27,6 +27,14 @@ export default function Register() {
   const handleRegister = async (e) => {
     e.preventDefault();
 
+    // 1. 비밀번호 유효성 검사 (영문, 숫자 포함 8자 이상)
+    // ^: 시작, (?=.*[A-Za-z]): 영문 최소 1개, (?=.*\d): 숫자 최소 1개, {8,}: 8자 이상
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
+
+    if (!passwordRegex.test(formData.password)) {
+      return toast.warning("비밀번호는 영문과 숫자를 포함하여 8자 이상이어야 합니다.");
+    }
+    
     // 1. 비밀번호 일치 확인 (프론트엔드 유효성 검사)
     if (formData.password !== formData.confirmPassword) {
       return toast.warning("비밀번호가 서로 다릅니다!");

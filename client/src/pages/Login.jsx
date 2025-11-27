@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import axios from '../api/axios'; // 우리가 만든 설정된 axios 가져오기
+import { GoogleLogin } from '@react-oauth/google';
+import axios from '../api/axios';
 
 export default function Login() {
-  const navigate = useNavigate(); // 페이지 이동을 도와주는 훅
-  
-  // 사용자가 입력한 이메일과 비밀번호를 저장할 공간
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
 
-  // 입력창에 글자를 칠 때마다 formData를 업데이트하는 함수
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -20,28 +19,34 @@ export default function Login() {
     });
   };
 
-  // 로그인 버튼을 눌렀을 때 실행되는 함수
   const handleLogin = async (e) => {
-    e.preventDefault(); // 새로고침 방지
-
+    e.preventDefault();
     try {
-      // 1. 백엔드로 로그인 요청 보냄
       const response = await axios.post('/auth/login', formData);
-
-      // 2. 성공 시 받은 토큰(신분증)을 브라우저(localStorage)에 저장
       const { token, user } = response.data;
       localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user)); // 유저 정보도 저장
-
+      localStorage.setItem('user', JSON.stringify(user));
       toast.success(`환영합니다, ${response.data.user.nickname}님! 👋`);
-      
-      // 3. 메인 페이지로 이동
       navigate('/');
-
     } catch (error) {
-      // 실패 시 에러 메시지 띄우기
       console.error(error);
-      toast.error(error.response?.data?.error || "로그인 실패! 아이디/비번을 확인하세요.");
+      toast.error(error.response?.data?.error || "로그인 실패!");
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const response = await axios.post('/auth/google', {
+        token: credentialResponse.credential
+      });
+      const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      toast.success(`구글 로그인 성공! 반가워요 ${user.nickname}님`);
+      navigate('/');
+    } catch (error) {
+      console.error(error);
+      toast.error("구글 로그인 실패");
     }
   };
 
@@ -51,9 +56,9 @@ export default function Login() {
         <h2 className="mb-6 text-3xl font-bold text-center text-gray-800">
           Tipping 로그인
         </h2>
-        
+
+        {/* 1. 일반 로그인 폼 */}
         <form onSubmit={handleLogin} className="space-y-6">
-          {/* 이메일 입력창 */}
           <div>
             <label className="block mb-1 text-sm font-medium text-gray-600">이메일</label>
             <input
@@ -67,7 +72,6 @@ export default function Login() {
             />
           </div>
 
-          {/* 비밀번호 입력창 */}
           <div>
             <label className="block mb-1 text-sm font-medium text-gray-600">비밀번호</label>
             <input
@@ -81,7 +85,6 @@ export default function Login() {
             />
           </div>
 
-          {/* 로그인 버튼 */}
           <button
             type="submit"
             className="w-full py-3 font-bold text-white transition bg-blue-500 rounded-lg hover:bg-blue-600"
@@ -90,8 +93,28 @@ export default function Login() {
           </button>
         </form>
 
-        {/* 회원가입 링크 */}
-        <p className="mt-4 text-center text-gray-600">
+        {/* 2. 구분선 및 구글 로그인 (폼 밖으로 뺌) */}
+        <div className="mt-6">
+          <div className="relative mb-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 text-gray-500 bg-white">간편 로그인</span>
+            </div>
+          </div>
+
+          <div className="flex justify-center">
+            {/* width 속성을 제거해보세요. (가끔 % 단위가 오류를 일으킵니다) */}
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => toast.error("구글 로그인 실패")}
+            />
+          </div>
+        </div>
+
+        {/* 3. 회원가입 링크 */}
+        <p className="mt-6 text-center text-gray-600">
           계정이 없으신가요?{' '}
           <Link to="/register" className="text-blue-500 hover:underline">
             회원가입 하러가기
