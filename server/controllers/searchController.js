@@ -81,8 +81,8 @@ exports.searchImage = async (req, res) => {
       engine: "google_lens",
       url: targetUrl,
       api_key: process.env.SERPAPI_KEY,
-      hl: "ko",
-      country: "kr",
+      hl: "en",
+      country: "us",
     }, (json) => {
       if (json.error) return res.status(500).json({ error: json.error });
 
