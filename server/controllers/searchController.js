@@ -120,7 +120,11 @@ exports.searchImage = async (req, res) => {
       }
 
       if (parsedResults.length === 0) {
-        return res.status(404).json({ error: "가격 정보를 찾지 못했습니다." });
+        return res.json({
+          message: "검색 완료 (결과 없음)",
+          count: 0,
+          results: [] 
+        });
       }
 
       const sortedResults = parsedResults

@@ -153,6 +153,14 @@ export default function Home() {
                     </button>
                 </div>
 
+                {/* 1.5. 결과 없음 안내 (추가된 부분) */}
+                {/* 로딩도 아니고, 결과도 비어있고, 검색을 시도한 적이 있을 때만 표시 */}
+                {!loading && results.length === 0 && file && (
+                    <div className="py-10 text-center text-gray-500 animate-fade-in">
+                        <p className="text-xl font-bold">검색 결과가 없습니다. 😢</p>
+                        <p className="mt-2 text-sm">옷이 더 잘 보이는 선명한 사진으로 다시 시도해보세요.</p>
+                    </div>
+                )}
                 {/* 2. 검색 결과 리스트 */}
                 {results.length > 0 && (
                     <div className="animate-fade-in-up">
