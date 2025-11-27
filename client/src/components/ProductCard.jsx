@@ -15,10 +15,10 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
   // 찜하기 버튼 클릭 시
   const handleLike = async () => {
     const token = localStorage.getItem('token');
-    
+
     // 1. 비로그인 체크 (기획서 요구사항)
     if (!token) {
-      if(confirm("로그인이 필요한 서비스입니다. 로그인 하시겠습니까?")) {
+      if (confirm("로그인이 필요한 서비스입니다. 로그인 하시겠습니까?")) {
         navigate('/login');
       }
       return;
@@ -44,7 +44,7 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
 
   // 찜 삭제 버튼 클릭 시 (찜 목록 페이지용)
   const handleDelete = async () => {
-    if(confirm("정말 삭제하시겠습니까?")) {
+    if (confirm("정말 삭제하시겠습니까?")) {
       try {
         await axios.delete(`/wishlist/${item.id}`);
         onDelete(item.id); // 화면에서도 지우기 위해 부모에게 알림
@@ -56,23 +56,23 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
 
   return (
     <div className="relative overflow-hidden transition-shadow bg-white border border-gray-200 rounded-lg hover:shadow-lg group">
-      
+
       {/* 1. 상품 썸네일 */}
       <div className="relative h-48 overflow-hidden bg-gray-100">
-        <img 
+        <img
           src={item.thumbnail || item.imageUrl} // 검색결과(thumbnail)와 찜목록(imageUrl) 변수명이 달라서 둘 다 대응
-          alt={item.title || item.productTitle} 
+          alt={item.title || item.productTitle}
           className="object-cover w-full h-full transition-transform group-hover:scale-105"
         />
-        
+
         {/* 하트 버튼 (검색 결과에서만 보임) */}
         {!isWishlistMode && (
-          <button 
+          <button
             onClick={handleLike}
             className="absolute p-2 bg-white rounded-full shadow-md top-2 right-2 hover:bg-gray-100"
           >
             {/* SVG 아이콘: 채워진 하트 vs 빈 하트 */}
-            <svg 
+            <svg
               className={`w-6 h-6 ${isLiked ? 'text-red-500 fill-current' : 'text-gray-400'}`}
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
             >
@@ -83,7 +83,7 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
 
         {/* 삭제 버튼 (찜 목록에서만 보임) */}
         {isWishlistMode && (
-          <button 
+          <button
             onClick={handleDelete}
             className="absolute p-1 text-white bg-red-500 rounded top-2 right-2 hover:bg-red-600"
           >
@@ -101,18 +101,24 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
             추천
           </span>
         )}
-        
+
         <h3 className="mb-2 text-sm font-medium text-gray-800 line-clamp-2 min-h-[40px]">
           {item.title || item.productTitle}
         </h3>
-        
+
         <div className="flex items-end justify-between mt-2">
-          <p className="text-lg font-bold text-gray-900">
-            {formatPrice(item.price)}원
-          </p>
-          <a 
-            href={item.link || item.productLink} 
-            target="_blank" 
+          {item.price > 0 ? (
+            <p className="text-lg font-bold text-gray-900">
+              {formatPrice(item.price)}원
+            </p>
+          ) : (
+            <p className="text-sm font-bold text-gray-400">
+              가격 정보 확인 필요
+            </p>
+          )}
+          <a
+            href={item.link || item.productLink}
+            target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600"
           >
