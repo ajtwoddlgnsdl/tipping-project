@@ -310,14 +310,19 @@ exports.searchImage = async (req, res) => {
     console.log(`🔍 [2단계] Google Vision API로 이미지 분석 중...`);
     const webData = await detectWebEntities(targetUrl);
 
+    // 안전하게 배열 확인
+    const bestGuessLabels = webData.bestGuessLabels || [];
+    const entities = webData.entities || [];
+    const pages = webData.pages || [];
+
     // 베스트 추측 라벨에서 검색 키워드 추출
     let bestKeyword = "";
-    if (webData.bestGuessLabels.length > 0) {
-      bestKeyword = webData.bestGuessLabels[0].label || "";
+    if (bestGuessLabels.length > 0) {
+      bestKeyword = bestGuessLabels[0].label || "";
     }
 
     // 웹 엔티티에서 상품명/브랜드명 추출
-    const topEntities = webData.entities
+    const topEntities = entities
       .filter(e => e.score > 0.5)
       .slice(0, 5)
       .map(e => e.description);
@@ -326,10 +331,23 @@ exports.searchImage = async (req, res) => {
     console.log(`💡 베스트 추측: ${bestKeyword}`);
 
     // --- [3단계] 매칭 페이지들에서 상품 정보 추출 ---
-    console.log(`🌐 [3단계] 매칭 페이지 ${webData.pages.length}개 분석 중...`);
+    console.log(`🌐 [3단계] 매칭 페이지 ${pages.length}개 분석 중...`);
+
+    // 결과가 없으면 빈 배열 반환
+    if (pages.length === 0 && entities.length === 0) {
+      console.log(`⚠️ Vision API에서 결과를 찾지 못했습니다.`);
+      return res.json({
+        message: "검색 완료 - 일치하는 상품을 찾지 못했습니다",
+        count: 0,
+        searchImage: targetUrl,
+        searchKeyword: "",
+        detectedEntities: [],
+        results: []
+      });
+    }
 
     // 쇼핑몰 URL 우선 정렬
-    const sortedPages = [...webData.pages].sort((a, b) => {
+    const sortedPages = [...pages].sort((a, b) => {
       const aIsShopping = isShoppingUrl(a.url) ? -1 : 1;
       const bIsShopping = isShoppingUrl(b.url) ? -1 : 1;
       return aIsShopping - bIsShopping;
@@ -379,10 +397,14 @@ exports.searchImage = async (req, res) => {
     }
 
     // --- [4단계] 유사 이미지 결과 추가 ---
+    const fullMatches = webData.fullMatches || [];
+    const partialMatches = webData.partialMatches || [];
+    const matches = webData.matches || [];
+    
     const similarImages = [
-      ...webData.fullMatches,
-      ...webData.partialMatches,
-      ...webData.matches
+      ...fullMatches,
+      ...partialMatches,
+      ...matches
     ].slice(0, 10);
 
     for (const img of similarImages) {
