@@ -1262,13 +1262,24 @@ exports.searchImage = async (req, res) => {
       return a.price - b.price;
     });
 
-    // SerpAPI 유사 이미지 (가격 없는 것 포함, 별도 섹션용)
+    // SerpAPI 유사 이미지 (가격 없는 것 포함)
     const visualMatches = serpData.visualMatches || [];
     
+    // 가격 없는 유사이미지도 결과에 일부 추가 (최대 10개)
+    const noPriceVisuals = visualMatches
+      .filter(v => v.price === 0 && v.link && v.image)
+      .slice(0, 10);
+    
+    if (noPriceVisuals.length > 0) {
+      console.log(`가격 없는 유사이미지 ${noPriceVisuals.length}개 결과에 추가`);
+      // 기존 결과 뒤에 추가
+      allResults = [...allResults, ...noPriceVisuals];
+    }
+
     // [5단계] 응답
     const processingTime = Date.now() - startTime;
-    console.log(`\n검색 완료! 쇼핑 ${allResults.length}개 + 유사이미지 ${visualMatches.length}개`);
-    if (allResults.length > 0) {
+    console.log(`\n검색 완료! 총 ${allResults.length}개 (쇼핑 + 유사이미지)`);
+    if (allResults.length > 0 && allResults[0].price > 0) {
       console.log(`최저가: ${allResults[0].price.toLocaleString()}원 (${allResults[0].source})`);
     }
     console.log(`처리 시간: ${processingTime}ms`);
