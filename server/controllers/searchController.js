@@ -1044,16 +1044,48 @@ const searchAllShoppingMalls = async (keywords, koreanKeywords) => {
   return combinedResults;
 };
 
-// ImgBB 업로드
+// ImgBB 업로드 (base64 방식으로 변경 - 더 안정적)
 const uploadToImgBB = async (filePath) => {
-  const formData = new FormData();
-  formData.append('image', fs.createReadStream(filePath));
-  formData.append('key', process.env.IMGBB_KEY);
-  const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
-    headers: formData.getHeaders(),
-    timeout: 30000,
-  });
-  return response.data.data.url;
+  try {
+    // 파일 크기 체크 (ImgBB 제한: 32MB)
+    const stats = fs.statSync(filePath);
+    const fileSizeInMB = stats.size / (1024 * 1024);
+    console.log(`[ImgBB] 파일 크기: ${fileSizeInMB.toFixed(2)}MB`);
+    
+    if (fileSizeInMB > 32) {
+      throw new Error('이미지 크기가 너무 큽니다 (최대 32MB)');
+    }
+    
+    // base64로 인코딩
+    const imageBuffer = fs.readFileSync(filePath);
+    const base64Image = imageBuffer.toString('base64');
+    
+    // API 키 확인
+    const apiKey = process.env.IMGBB_KEY;
+    if (!apiKey) {
+      throw new Error('IMGBB_KEY가 설정되지 않았습니다');
+    }
+    
+    // FormData로 전송
+    const formData = new FormData();
+    formData.append('image', base64Image);
+    formData.append('key', apiKey);
+    
+    const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
+      headers: formData.getHeaders(),
+      timeout: 60000, // 60초로 증가
+    });
+    
+    if (response.data && response.data.data && response.data.data.url) {
+      console.log(`[ImgBB] 업로드 성공`);
+      return response.data.data.url;
+    } else {
+      throw new Error('ImgBB 응답 형식 오류');
+    }
+  } catch (error) {
+    console.error('[ImgBB] 업로드 실패:', error.response?.data || error.message);
+    throw new Error(`이미지 업로드 실패: ${error.response?.data?.error?.message || error.message}`);
+  }
 };
 
 // 메인 이미지 검색 API
