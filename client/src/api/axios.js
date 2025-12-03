@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ||'http://localhost:3000/api', // 백엔드 기본 주소
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api', // 백엔드 기본 주소
   headers: {
     'Content-Type': 'application/json',
   },
