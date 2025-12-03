@@ -798,3 +798,64 @@ exports.searchByKeyword = async (req, res) => {
     res.status(500).json({ error: "서버 오류: " + error.message });
   }
 };
+
+// 배경 제거 API (remove.bg 사용)
+exports.removeBackground = async (req, res) => {
+  try {
+    console.log('배경 제거 요청 받음');
+    
+    if (!req.file) {
+      return res.status(400).json({ error: "이미지가 필요합니다." });
+    }
+
+    const REMOVE_BG_API_KEY = process.env.REMOVE_BG_API_KEY;
+    
+    if (!REMOVE_BG_API_KEY) {
+      // API 키가 없으면 원본 이미지 반환 (폴백)
+      console.log('REMOVE_BG_API_KEY가 설정되지 않음. 원본 반환.');
+      const imageBuffer = fs.readFileSync(req.file.path);
+      fs.unlinkSync(req.file.path);
+      res.set('Content-Type', 'image/png');
+      return res.send(imageBuffer);
+    }
+
+    // remove.bg API 호출
+    const formData = new FormData();
+    formData.append('image_file', fs.createReadStream(req.file.path));
+    formData.append('size', 'auto');
+
+    const response = await axios.post('https://api.remove.bg/v1.0/removebg', formData, {
+      headers: {
+        ...formData.getHeaders(),
+        'X-Api-Key': REMOVE_BG_API_KEY,
+      },
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    });
+
+    // 임시 파일 삭제
+    fs.unlinkSync(req.file.path);
+
+    // 결과 반환
+    res.set('Content-Type', 'image/png');
+    res.send(Buffer.from(response.data));
+    console.log('배경 제거 완료');
+
+  } catch (error) {
+    console.error("배경 제거 오류:", error.message);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    // 에러 상세 정보
+    if (error.response) {
+      const errorMsg = error.response.data?.toString() || error.message;
+      return res.status(error.response.status).json({ 
+        error: "배경 제거 실패",
+        details: errorMsg
+      });
+    }
+    
+    res.status(500).json({ error: "서버 오류: " + error.message });
+  }
+};

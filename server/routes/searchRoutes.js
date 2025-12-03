@@ -11,4 +11,7 @@ router.post('/', upload.single('image'), searchController.searchImage);
 // POST /api/search/keyword - 키워드로 상품 검색 (보조 API)
 router.post('/keyword', searchController.searchByKeyword);
 
+// POST /api/search/remove-background - 배경 제거 (누끼)
+router.post('/remove-background', upload.single('image'), searchController.removeBackground);
+
 module.exports = router;
