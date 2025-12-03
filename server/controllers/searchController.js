@@ -1,5 +1,5 @@
 // server/controllers/searchController.js
-// [v2.0] Vision API ÀÌ¹ÌÁö ÀÎ½Ä + ÃÖÀú°¡ °Ë»ö ½Ã½ºÅÛ
+// [v2.0] Vision API ì´ë¯¸ì§€ ì¸ì‹ + ìµœì €ê°€ ê²€ìƒ‰ ì‹œìŠ¤í…œ
 
 const vision = require('@google-cloud/vision');
 const fs = require('fs');
@@ -7,24 +7,24 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const FormData = require('form-data');
 
-// Google Cloud Vision Å¬¶óÀÌ¾ðÆ® ÃÊ±âÈ­
+// Google Cloud Vision í´ë¼ì´ì–¸íŠ¸ ì´ˆê¸°í™”
 let visionClient;
 
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
   visionClient = new vision.ImageAnnotatorClient({ credentials });
-  console.log("Vision API: È¯°æº¯¼ö ÀÎÁõ");
+  console.log("Vision API: í™˜ê²½ë³€ìˆ˜ ì¸ì¦");
 } else if (process.env.GOOGLE_CLOUD_KEY_PATH) {
   visionClient = new vision.ImageAnnotatorClient({
     keyFilename: process.env.GOOGLE_CLOUD_KEY_PATH,
   });
-  console.log("Vision API: ÆÄÀÏ °æ·Î ÀÎÁõ");
+  console.log("Vision API: íŒŒì¼ ê²½ë¡œ ì¸ì¦");
 } else {
-  console.error("Vision API: ÀÎÁõ Á¤º¸ ¾øÀ½!");
+  console.error("Vision API: ì¸ì¦ ì •ë³´ ì—†ìŒ!");
   visionClient = new vision.ImageAnnotatorClient();
 }
 
-// ºê·£µå µ¥ÀÌÅÍº£ÀÌ½º
+// ë¸Œëžœë“œ ë°ì´í„°ë² ì´ìŠ¤
 const BRAND_DATABASE = [
   'Nike', 'Adidas', 'Puma', 'New Balance', 'Converse', 'Vans', 'Reebok', 'Asics', 'Fila',
   'Under Armour', 'Jordan', 'Skechers', 'Crocs', 'Birkenstock',
@@ -36,27 +36,27 @@ const BRAND_DATABASE = [
   'AirPods', 'iPhone', 'iPad', 'MacBook', 'Galaxy', 'PlayStation', 'Nintendo',
 ];
 
-// ¿µ¾î-ÇÑ±Û ºê·£µå ¸ÅÇÎ
+// ì˜ì–´-í•œê¸€ ë¸Œëžœë“œ ë§¤í•‘
 const BRAND_KR_MAP = {
-  'nike': '³ªÀÌÅ°', 'adidas': '¾Æµð´Ù½º', 'puma': 'Çª¸¶',
-  'new balance': '´º¹ß¶õ½º', 'converse': 'ÄÁ¹ö½º', 'vans': '¹Ý½º',
-  'the north face': '³ë½ºÆäÀÌ½º', 'north face': '³ë½ºÆäÀÌ½º',
-  'apple': '¾ÖÇÃ', 'samsung': '»ï¼º', 'sony': '¼Ò´Ï', 'dyson': '´ÙÀÌ½¼',
-  'gucci': '±¸Âî', 'louis vuitton': '·çÀÌºñÅë', 'chanel': '»þ³Ú',
-  'uniqlo': 'À¯´ÏÅ¬·Î', 'zara': 'ÀÚ¶ó',
-  'airpods': '¿¡¾îÆÌ', 'iphone': '¾ÆÀÌÆù', 'macbook': '¸ÆºÏ', 'galaxy': '°¶·°½Ã',
+  'nike': 'ë‚˜ì´í‚¤', 'adidas': 'ì•„ë””ë‹¤ìŠ¤', 'puma': 'í‘¸ë§ˆ',
+  'new balance': 'ë‰´ë°œëž€ìŠ¤', 'converse': 'ì»¨ë²„ìŠ¤', 'vans': 'ë°˜ìŠ¤',
+  'the north face': 'ë…¸ìŠ¤íŽ˜ì´ìŠ¤', 'north face': 'ë…¸ìŠ¤íŽ˜ì´ìŠ¤',
+  'apple': 'ì• í”Œ', 'samsung': 'ì‚¼ì„±', 'sony': 'ì†Œë‹ˆ', 'dyson': 'ë‹¤ì´ìŠ¨',
+  'gucci': 'êµ¬ì°Œ', 'louis vuitton': 'ë£¨ì´ë¹„í†µ', 'chanel': 'ìƒ¤ë„¬',
+  'uniqlo': 'ìœ ë‹ˆí´ë¡œ', 'zara': 'ìžë¼',
+  'airpods': 'ì—ì–´íŒŸ', 'iphone': 'ì•„ì´í°', 'macbook': 'ë§¥ë¶', 'galaxy': 'ê°¤ëŸ­ì‹œ',
 };
 
-// Ä«Å×°í¸® ¸ÅÇÎ
+// ì¹´í…Œê³ ë¦¬ ë§¤í•‘
 const CATEGORY_KR_MAP = {
-  'shoes': '½Å¹ß', 'sneakers': '½º´ÏÄ¿Áî', 'boots': 'ºÎÃ÷',
-  'shirt': '¼ÅÃ÷', 't-shirt': 'Æ¼¼ÅÃ÷', 'pants': '¹ÙÁö', 'jeans': 'Ã»¹ÙÁö',
-  'jacket': 'ÀÚÄÏ', 'coat': 'ÄÚÆ®', 'hoodie': 'ÈÄµåÆ¼',
-  'bag': '°¡¹æ', 'backpack': '¹éÆÑ', 'handbag': 'ÇÚµå¹é',
-  'headphones': 'ÇìµåÆù', 'earphones': 'ÀÌ¾îÆù', 'watch': '½Ã°è',
+  'shoes': 'ì‹ ë°œ', 'sneakers': 'ìŠ¤ë‹ˆì»¤ì¦ˆ', 'boots': 'ë¶€ì¸ ',
+  'shirt': 'ì…”ì¸ ', 't-shirt': 'í‹°ì…”ì¸ ', 'pants': 'ë°”ì§€', 'jeans': 'ì²­ë°”ì§€',
+  'jacket': 'ìžì¼“', 'coat': 'ì½”íŠ¸', 'hoodie': 'í›„ë“œí‹°',
+  'bag': 'ê°€ë°©', 'backpack': 'ë°±íŒ©', 'handbag': 'í•¸ë“œë°±',
+  'headphones': 'í—¤ë“œí°', 'earphones': 'ì´ì–´í°', 'watch': 'ì‹œê³„',
 };
 
-// °Ë»ö¾î Á¤Á¦
+// ê²€ìƒ‰ì–´ ì •ì œ
 const cleanSearchQuery = (text) => {
   if (!text) return "";
   const noiseWords = [
@@ -73,7 +73,7 @@ const cleanSearchQuery = (text) => {
   return cleaned.replace(/\s+/g, ' ').trim();
 };
 
-// ¿µ¾î¸¦ ÇÑ±Û·Î º¯È¯
+// ì˜ì–´ë¥¼ í•œê¸€ë¡œ ë³€í™˜
 const translateToKorean = (text) => {
   if (!text) return text;
   let result = text.toLowerCase();
@@ -86,7 +86,7 @@ const translateToKorean = (text) => {
   return result;
 };
 
-// ºê·£µå °¨Áö
+// ë¸Œëžœë“œ ê°ì§€
 const detectBrand = (entities) => {
   if (!entities || !Array.isArray(entities)) return null;
   const entityTexts = entities.filter(e => e && e.description).map(e => e.description.toLowerCase());
@@ -96,7 +96,7 @@ const detectBrand = (entities) => {
   return null;
 };
 
-// °Ë»ö Å°¿öµå »ý¼º
+// ê²€ìƒ‰ í‚¤ì›Œë“œ ìƒì„±
 const generateSearchKeyword = (bestGuessLabel, entities, brand) => {
   let keyword = "";
   if (bestGuessLabel) keyword = cleanSearchQuery(bestGuessLabel);
@@ -111,7 +111,7 @@ const generateSearchKeyword = (bestGuessLabel, entities, brand) => {
   return { original: keyword, korean: koreanKeyword !== keyword.toLowerCase() ? koreanKeyword : null };
 };
 
-// Vision API - À¥ °¨Áö
+// Vision API - ì›¹ ê°ì§€
 const detectWebEntities = async (imageUrl) => {
   try {
     const [result] = await visionClient.webDetection(imageUrl);
@@ -129,7 +129,7 @@ const detectWebEntities = async (imageUrl) => {
   }
 };
 
-// Vision API - ¶óº§ °¨Áö
+// Vision API - ë¼ë²¨ ê°ì§€
 const detectLabels = async (imageUrl) => {
   try {
     const [result] = await visionClient.labelDetection(imageUrl);
@@ -137,7 +137,7 @@ const detectLabels = async (imageUrl) => {
   } catch (error) { return []; }
 };
 
-// Vision API - ·Î°í °¨Áö
+// Vision API - ë¡œê³  ê°ì§€
 const detectLogos = async (imageUrl) => {
   try {
     const [result] = await visionClient.logoDetection(imageUrl);
@@ -145,11 +145,11 @@ const detectLogos = async (imageUrl) => {
   } catch (error) { return []; }
 };
 
-// ³×ÀÌ¹ö ¼îÇÎ °Ë»ö
+// ë„¤ì´ë²„ ì‡¼í•‘ ê²€ìƒ‰
 const searchNaverShopping = async (keyword) => {
   try {
     if (!keyword) return [];
-    console.log(`[³×ÀÌ¹ö] °Ë»ö: "${keyword}"`);
+    console.log(`[ë„¤ì´ë²„] ê²€ìƒ‰: "${keyword}"`);
     const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}&sort=price_asc`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -175,7 +175,7 @@ const searchNaverShopping = async (keyword) => {
         const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
         let thumbnail = $el.find('img[src]').first().attr('src') ||
                         $el.find('img[data-src]').first().attr('data-src') || '';
-        const mall = $el.find('[class*="mall"]').text().trim() || '³×ÀÌ¹ö¼îÇÎ';
+        const mall = $el.find('[class*="mall"]').text().trim() || 'ë„¤ì´ë²„ì‡¼í•‘';
         if (title && link && title.length > 2) {
           if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : 'https://search.shopping.naver.com' + link;
           if (thumbnail && !thumbnail.startsWith('http')) thumbnail = thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail;
@@ -184,19 +184,19 @@ const searchNaverShopping = async (keyword) => {
       });
       if (results.length >= 5) break;
     }
-    console.log(`[³×ÀÌ¹ö] ${results.length}°³ »óÇ°`);
+    console.log(`[ë„¤ì´ë²„] ${results.length}ê°œ ìƒí’ˆ`);
     return results;
   } catch (error) {
-    console.error("[³×ÀÌ¹ö] ¿¡·¯:", error.message);
+    console.error("[ë„¤ì´ë²„] ì—ëŸ¬:", error.message);
     return [];
   }
 };
 
-// ´Ù³ª¿Í °Ë»ö
+// ë‹¤ë‚˜ì™€ ê²€ìƒ‰
 const searchDanawa = async (keyword) => {
   try {
     if (!keyword) return [];
-    console.log(`[´Ù³ª¿Í] °Ë»ö: "${keyword}"`);
+    console.log(`[ë‹¤ë‚˜ì™€] ê²€ìƒ‰: "${keyword}"`);
     const searchUrl = `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(keyword)}&tab=main&sort=lowprice`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -216,23 +216,23 @@ const searchDanawa = async (keyword) => {
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
           link: link.startsWith('http') ? link : `https://search.danawa.com${link}`,
-          source: '´Ù³ª¿Í', type: 'shopping'
+          source: 'ë‹¤ë‚˜ì™€', type: 'shopping'
         });
       }
     });
-    console.log(`[´Ù³ª¿Í] ${results.length}°³ »óÇ°`);
+    console.log(`[ë‹¤ë‚˜ì™€] ${results.length}ê°œ ìƒí’ˆ`);
     return results;
   } catch (error) {
-    console.error("[´Ù³ª¿Í] ¿¡·¯:", error.message);
+    console.error("[ë‹¤ë‚˜ì™€] ì—ëŸ¬:", error.message);
     return [];
   }
 };
 
-// 11¹ø°¡ °Ë»ö
+// 11ë²ˆê°€ ê²€ìƒ‰
 const search11st = async (keyword) => {
   try {
     if (!keyword) return [];
-    console.log(`[11¹ø°¡] °Ë»ö: "${keyword}"`);
+    console.log(`[11ë²ˆê°€] ê²€ìƒ‰: "${keyword}"`);
     const searchUrl = `https://search.11st.co.kr/Search.tmall?kwd=${encodeURIComponent(keyword)}&sortCd=LWPR`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -252,23 +252,23 @@ const search11st = async (keyword) => {
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
-          link, source: '11¹ø°¡', type: 'shopping'
+          link, source: '11ë²ˆê°€', type: 'shopping'
         });
       }
     });
-    console.log(`[11¹ø°¡] ${results.length}°³ »óÇ°`);
+    console.log(`[11ë²ˆê°€] ${results.length}ê°œ ìƒí’ˆ`);
     return results;
   } catch (error) {
-    console.error("[11¹ø°¡] ¿¡·¯:", error.message);
+    console.error("[11ë²ˆê°€] ì—ëŸ¬:", error.message);
     return [];
   }
 };
 
-// G¸¶ÄÏ °Ë»ö
+// Gë§ˆì¼“ ê²€ìƒ‰
 const searchGmarket = async (keyword) => {
   try {
     if (!keyword) return [];
-    console.log(`[G¸¶ÄÏ] °Ë»ö: "${keyword}"`);
+    console.log(`[Gë§ˆì¼“] ê²€ìƒ‰: "${keyword}"`);
     const searchUrl = `https://browse.gmarket.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -288,23 +288,23 @@ const searchGmarket = async (keyword) => {
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
-          link, source: 'G¸¶ÄÏ', type: 'shopping'
+          link, source: 'Gë§ˆì¼“', type: 'shopping'
         });
       }
     });
-    console.log(`[G¸¶ÄÏ] ${results.length}°³ »óÇ°`);
+    console.log(`[Gë§ˆì¼“] ${results.length}ê°œ ìƒí’ˆ`);
     return results;
   } catch (error) {
-    console.error("[G¸¶ÄÏ] ¿¡·¯:", error.message);
+    console.error("[Gë§ˆì¼“] ì—ëŸ¬:", error.message);
     return [];
   }
 };
 
-// SSG °Ë»ö
+// SSG ê²€ìƒ‰
 const searchSSG = async (keyword) => {
   try {
     if (!keyword) return [];
-    console.log(`[SSG] °Ë»ö: "${keyword}"`);
+    console.log(`[SSG] ê²€ìƒ‰: "${keyword}"`);
     const searchUrl = `https://www.ssg.com/search.ssg?target=all&query=${encodeURIComponent(keyword)}&sort=price_asc`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -328,19 +328,19 @@ const searchSSG = async (keyword) => {
         });
       }
     });
-    console.log(`[SSG] ${results.length}°³ »óÇ°`);
+    console.log(`[SSG] ${results.length}ê°œ ìƒí’ˆ`);
     return results;
   } catch (error) {
-    console.error("[SSG] ¿¡·¯:", error.message);
+    console.error("[SSG] ì—ëŸ¬:", error.message);
     return [];
   }
 };
 
-// ¿Á¼Ç °Ë»ö
+// ì˜¥ì…˜ ê²€ìƒ‰
 const searchAuction = async (keyword) => {
   try {
     if (!keyword) return [];
-    console.log(`[¿Á¼Ç] °Ë»ö: "${keyword}"`);
+    console.log(`[ì˜¥ì…˜] ê²€ìƒ‰: "${keyword}"`);
     const searchUrl = `https://browse.auction.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -360,23 +360,23 @@ const searchAuction = async (keyword) => {
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
-          link, source: '¿Á¼Ç', type: 'shopping'
+          link, source: 'ì˜¥ì…˜', type: 'shopping'
         });
       }
     });
-    console.log(`[¿Á¼Ç] ${results.length}°³ »óÇ°`);
+    console.log(`[ì˜¥ì…˜] ${results.length}ê°œ ìƒí’ˆ`);
     return results;
   } catch (error) {
-    console.error("[¿Á¼Ç] ¿¡·¯:", error.message);
+    console.error("[ì˜¥ì…˜] ì—ëŸ¬:", error.message);
     return [];
   }
 };
 
-// ¸ðµç ¼îÇÎ¸ô µ¿½Ã °Ë»ö
+// ëª¨ë“  ì‡¼í•‘ëª° ë™ì‹œ ê²€ìƒ‰
 const searchAllShoppingMalls = async (keyword, koreanKeyword) => {
   if (!keyword) return [];
-  console.log(`\n=== ¼îÇÎ¸ô °Ë»ö ½ÃÀÛ: "${keyword}" ===`);
-  if (koreanKeyword) console.log(`ÇÑ±Û Å°¿öµå: "${koreanKeyword}"`);
+  console.log(`\n=== ì‡¼í•‘ëª° ê²€ìƒ‰ ì‹œìž‘: "${keyword}" ===`);
+  if (koreanKeyword) console.log(`í•œê¸€ í‚¤ì›Œë“œ: "${koreanKeyword}"`);
   
   const searchPromises = [
     searchNaverShopping(keyword),
@@ -395,7 +395,7 @@ const searchAllShoppingMalls = async (keyword, koreanKeyword) => {
   const allResults = await Promise.all(searchPromises);
   let combinedResults = allResults.flat();
   
-  // Áßº¹ Á¦°Å
+  // ì¤‘ë³µ ì œê±°
   const seenUrls = new Set();
   combinedResults = combinedResults.filter(item => {
     if (!item || !item.link) return false;
@@ -405,18 +405,18 @@ const searchAllShoppingMalls = async (keyword, koreanKeyword) => {
     return true;
   });
   
-  // °¡°Ý¼ø Á¤·Ä
+  // ê°€ê²©ìˆœ ì •ë ¬
   combinedResults.sort((a, b) => {
     if (a.price > 0 && b.price === 0) return -1;
     if (a.price === 0 && b.price > 0) return 1;
     return a.price - b.price;
   });
   
-  console.log(`=== ÃÑ ${combinedResults.length}°³ »óÇ° ===\n`);
+  console.log(`=== ì´ ${combinedResults.length}ê°œ ìƒí’ˆ ===\n`);
   return combinedResults;
 };
 
-// ImgBB ¾÷·Îµå
+// ImgBB ì—…ë¡œë“œ
 const uploadToImgBB = async (filePath) => {
   const formData = new FormData();
   formData.append('image', fs.createReadStream(filePath));
@@ -428,28 +428,28 @@ const uploadToImgBB = async (filePath) => {
   return response.data.data.url;
 };
 
-// ¸ÞÀÎ ÀÌ¹ÌÁö °Ë»ö API
+// ë©”ì¸ ì´ë¯¸ì§€ ê²€ìƒ‰ API
 exports.searchImage = async (req, res) => {
   const startTime = Date.now();
   try {
     console.log(`\n${'='.repeat(50)}`);
-    console.log(`ÀÌ¹ÌÁö °Ë»ö ½ÃÀÛ - ${new Date().toLocaleString('ko-KR')}`);
+    console.log(`ì´ë¯¸ì§€ ê²€ìƒ‰ ì‹œìž‘ - ${new Date().toLocaleString('ko-KR')}`);
     console.log(`${'='.repeat(50)}`);
 
-    // [1´Ü°è] ÀÌ¹ÌÁö URL È®º¸
+    // [1ë‹¨ê³„] ì´ë¯¸ì§€ URL í™•ë³´
     let targetUrl = req.body.imageUrl;
     if (req.file) {
-      console.log(`\n[1´Ü°è] ÀÌ¹ÌÁö ¾÷·Îµå Áß... (${req.file.originalname})`);
+      console.log(`\n[1ë‹¨ê³„] ì´ë¯¸ì§€ ì—…ë¡œë“œ ì¤‘... (${req.file.originalname})`);
       targetUrl = await uploadToImgBB(req.file.path);
       fs.unlinkSync(req.file.path);
-      console.log(`¾÷·Îµå ¿Ï·á: ${targetUrl.substring(0, 50)}...`);
+      console.log(`ì—…ë¡œë“œ ì™„ë£Œ: ${targetUrl.substring(0, 50)}...`);
     }
     if (!targetUrl) {
-      return res.status(400).json({ error: "ÀÌ¹ÌÁö°¡ ÇÊ¿äÇÕ´Ï´Ù." });
+      return res.status(400).json({ error: "ì´ë¯¸ì§€ê°€ í•„ìš”í•©ë‹ˆë‹¤." });
     }
 
-    // [2´Ü°è] Vision API ºÐ¼®
-    console.log(`\n[2´Ü°è] Vision API ºÐ¼® Áß...`);
+    // [2ë‹¨ê³„] Vision API ë¶„ì„
+    console.log(`\n[2ë‹¨ê³„] Vision API ë¶„ì„ ì¤‘...`);
     const [webData, labels, logos] = await Promise.all([
       detectWebEntities(targetUrl),
       detectLabels(targetUrl),
@@ -461,25 +461,25 @@ exports.searchImage = async (req, res) => {
     const bestGuess = bestGuessLabels[0]?.label || "";
     
     const topEntities = entities.filter(e => e && e.description && e.score > 0.3).slice(0, 10);
-    console.log(`º£½ºÆ® ÃßÃø: "${bestGuess}"`);
-    console.log(`»óÀ§ ¿£Æ¼Æ¼: ${topEntities.map(e => e.description).join(', ')}`);
-    if (labels.length > 0) console.log(`¶óº§: ${labels.slice(0, 5).join(', ')}`);
-    if (logos.length > 0) console.log(`·Î°í: ${logos.join(', ')}`);
+    console.log(`ë² ìŠ¤íŠ¸ ì¶”ì¸¡: "${bestGuess}"`);
+    console.log(`ìƒìœ„ ì—”í‹°í‹°: ${topEntities.map(e => e.description).join(', ')}`);
+    if (labels.length > 0) console.log(`ë¼ë²¨: ${labels.slice(0, 5).join(', ')}`);
+    if (logos.length > 0) console.log(`ë¡œê³ : ${logos.join(', ')}`);
     
     const detectedBrand = logos[0] || detectBrand(topEntities);
-    if (detectedBrand) console.log(`°¨ÁöµÈ ºê·£µå: ${detectedBrand}`);
+    if (detectedBrand) console.log(`ê°ì§€ëœ ë¸Œëžœë“œ: ${detectedBrand}`);
 
-    // [3´Ü°è] °Ë»ö Å°¿öµå »ý¼º
-    console.log(`\n[3´Ü°è] °Ë»ö Å°¿öµå »ý¼º Áß...`);
+    // [3ë‹¨ê³„] ê²€ìƒ‰ í‚¤ì›Œë“œ ìƒì„±
+    console.log(`\n[3ë‹¨ê³„] ê²€ìƒ‰ í‚¤ì›Œë“œ ìƒì„± ì¤‘...`);
     const keywords = generateSearchKeyword(bestGuess, topEntities, detectedBrand);
-    console.log(`¿øº»: "${keywords.original}"`);
-    if (keywords.korean) console.log(`ÇÑ±Û: "${keywords.korean}"`);
+    console.log(`ì›ë³¸: "${keywords.original}"`);
+    if (keywords.korean) console.log(`í•œê¸€: "${keywords.korean}"`);
     
     if (!keywords.original) {
-      console.log(`»óÇ° ÀÎ½Ä ½ÇÆÐ`);
+      console.log(`ìƒí’ˆ ì¸ì‹ ì‹¤íŒ¨`);
       return res.json({
         success: false,
-        message: "ÀÌ¹ÌÁö¿¡¼­ »óÇ°À» ÀÎ½ÄÇÏÁö ¸øÇß½À´Ï´Ù.",
+        message: "ì´ë¯¸ì§€ì—ì„œ ìƒí’ˆì„ ì¸ì‹í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.",
         searchImage: targetUrl,
         searchKeyword: "",
         detectedBrand: null,
@@ -491,24 +491,24 @@ exports.searchImage = async (req, res) => {
       });
     }
 
-    // [4´Ü°è] ¼îÇÎ¸ô °Ë»ö
-    console.log(`\n[4´Ü°è] ¼îÇÎ¸ô °Ë»ö Áß...`);
+    // [4ë‹¨ê³„] ì‡¼í•‘ëª° ê²€ìƒ‰
+    console.log(`\n[4ë‹¨ê³„] ì‡¼í•‘ëª° ê²€ìƒ‰ ì¤‘...`);
     const shoppingResults = await searchAllShoppingMalls(keywords.original, keywords.korean);
 
-    // [5´Ü°è] ÀÀ´ä
+    // [5ë‹¨ê³„] ì‘ë‹µ
     const processingTime = Date.now() - startTime;
-    console.log(`\n°Ë»ö ¿Ï·á! ${shoppingResults.length}°³ »óÇ°`);
+    console.log(`\nê²€ìƒ‰ ì™„ë£Œ! ${shoppingResults.length}ê°œ ìƒí’ˆ`);
     if (shoppingResults.length > 0) {
-      console.log(`ÃÖÀú°¡: ${shoppingResults[0].price.toLocaleString()}¿ø (${shoppingResults[0].source})`);
+      console.log(`ìµœì €ê°€: ${shoppingResults[0].price.toLocaleString()}ì› (${shoppingResults[0].source})`);
     }
-    console.log(`Ã³¸® ½Ã°£: ${processingTime}ms`);
+    console.log(`ì²˜ë¦¬ ì‹œê°„: ${processingTime}ms`);
     console.log(`${'='.repeat(50)}\n`);
 
     res.json({
       success: true,
       message: shoppingResults.length > 0 
-        ? `"${keywords.original}" °Ë»ö °á°ú ${shoppingResults.length}°³ »óÇ°À» Ã£¾Ò½À´Ï´Ù.`
-        : "ÇØ´ç »óÇ°ÀÇ ÆÇ¸ÅÃ³¸¦ Ã£Áö ¸øÇß½À´Ï´Ù.",
+        ? `"${keywords.original}" ê²€ìƒ‰ ê²°ê³¼ ${shoppingResults.length}ê°œ ìƒí’ˆì„ ì°¾ì•˜ìŠµë‹ˆë‹¤.`
+        : "í•´ë‹¹ ìƒí’ˆì˜ íŒë§¤ì²˜ë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.",
       searchImage: targetUrl,
       searchKeyword: keywords.original,
       searchKeywordKorean: keywords.korean,
@@ -522,23 +522,23 @@ exports.searchImage = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(`°Ë»ö ¿À·ù:`, error);
+    console.error(`ê²€ìƒ‰ ì˜¤ë¥˜:`, error);
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     res.status(500).json({ 
       success: false,
-      error: "¼­¹ö ¿À·ù: " + error.message,
+      error: "ì„œë²„ ì˜¤ë¥˜: " + error.message,
       processingTime: `${Date.now() - startTime}ms`,
     });
   }
 };
 
-// Å°¿öµå °Ë»ö API
+// í‚¤ì›Œë“œ ê²€ìƒ‰ API
 exports.searchByKeyword = async (req, res) => {
   try {
     const { keyword } = req.body;
-    if (!keyword) return res.status(400).json({ error: "°Ë»ö Å°¿öµå°¡ ÇÊ¿äÇÕ´Ï´Ù." });
+    if (!keyword) return res.status(400).json({ error: "ê²€ìƒ‰ í‚¤ì›Œë“œê°€ í•„ìš”í•©ë‹ˆë‹¤." });
     
-    console.log(`Å°¿öµå °Ë»ö: "${keyword}"`);
+    console.log(`í‚¤ì›Œë“œ ê²€ìƒ‰: "${keyword}"`);
     const results = await searchAllShoppingMalls(keyword, translateToKorean(keyword));
     
     res.json({
@@ -549,7 +549,7 @@ exports.searchByKeyword = async (req, res) => {
       lowestPrice: results[0] || null,
     });
   } catch (error) {
-    console.error("Å°¿öµå °Ë»ö ¿À·ù:", error);
-    res.status(500).json({ error: "¼­¹ö ¿À·ù: " + error.message });
+    console.error("í‚¤ì›Œë“œ ê²€ìƒ‰ ì˜¤ë¥˜:", error);
+    res.status(500).json({ error: "ì„œë²„ ì˜¤ë¥˜: " + error.message });
   }
 };
