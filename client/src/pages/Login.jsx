@@ -37,6 +37,7 @@ export default function Login() {
 
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
+      console.log("구글 credential 수신:", credentialResponse.credential ? "있음" : "없음");
       const response = await axios.post('/auth/google', {
         token: credentialResponse.credential
       });
@@ -46,21 +47,37 @@ export default function Login() {
       toast.success(`구글 로그인 성공! 반가워요 ${user.nickname}님`);
       navigate('/');
     } catch (error) {
-      console.error(error);
-      toast.error("구글 로그인 실패");
+      console.error("구글 로그인 서버 에러:", error.response?.data || error);
+      toast.error(error.response?.data?.error || "구글 로그인 실패");
     }
   };
 
   useEffect(() => {
     // window.Kakao가 있고, 아직 초기화 안 됐으면 초기화
     if (window.Kakao && !window.Kakao.isInitialized()) {
-      // 👇 여기에 아까 복사한 'JavaScript 키'를 넣으세요!
-      window.Kakao.init('YOUR_KAKAO_JAVASCRIPT_KEY');
+      // 환경변수에서 카카오 JavaScript 키 가져오기
+      const kakaoKey = import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY;
+      if (kakaoKey) {
+        window.Kakao.init(kakaoKey);
+      } else {
+        console.error('카카오 JavaScript 키가 설정되지 않았습니다. .env 파일에 VITE_KAKAO_JAVASCRIPT_KEY를 설정해주세요.');
+      }
     }
   }, []);
 
   // [추가] 카카오 로그인 버튼 클릭 시 실행
   const handleKakaoLogin = () => {
+    // 카카오 SDK 초기화 확인
+    if (!window.Kakao) {
+      toast.error("카카오 SDK가 로드되지 않았습니다.");
+      return;
+    }
+    if (!window.Kakao.isInitialized()) {
+      toast.error("카카오 SDK가 초기화되지 않았습니다. 환경변수를 확인해주세요.");
+      console.error("VITE_KAKAO_JAVASCRIPT_KEY:", import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY);
+      return;
+    }
+
     window.Kakao.Auth.login({
       success: async (authObj) => {
         try {
@@ -77,13 +94,13 @@ export default function Login() {
           toast.success(`카카오 로그인 성공! 반가워요 ${user.nickname}님`);
           navigate('/');
         } catch (error) {
-          console.error(error);
-          toast.error("카카오 로그인 서버 처리 실패");
+          console.error("카카오 로그인 서버 에러:", error.response?.data || error);
+          toast.error(error.response?.data?.error || "카카오 로그인 서버 처리 실패");
         }
       },
       fail: (err) => {
-        console.error(err);
-        toast.error("카카오 로그인 실패");
+        console.error("카카오 로그인 실패:", err);
+        toast.error(`카카오 로그인 실패: ${err.error_description || err.error || '알 수 없는 오류'}`);
       },
     });
   };

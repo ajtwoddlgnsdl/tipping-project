@@ -101,12 +101,10 @@ exports.login = async (req, res) => {
 // [신규] 구글 로그인 처리
 exports.googleLogin = async (req, res) => {
   try {
-    const { token } = req.body; // 프론트에서 받은 구글 토큰
+    const { token } = req.body; // 프론트에서 받은 구글 ID Token (JWT)
 
-    // 1. 구글 서버에 "이 토큰 진짜야? 누구 거야?" 라고 물어봄
-    const googleResponse = await axios.get(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    // 1. 구글 ID Token 검증 (tokeninfo 엔드포인트 사용)
+    const googleResponse = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${token}`);
 
     const { sub: snsId, email, name, picture } = googleResponse.data;
 
