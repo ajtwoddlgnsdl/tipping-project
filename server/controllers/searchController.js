@@ -195,12 +195,23 @@ const exchangeToKRW = (price, currency) => {
 // 🌐 Google Cloud Vision - 웹 감지 (Web Detection)
 const detectWebEntities = async (imageUrl) => {
   try {
-    const [result] = await visionClient.webDetection(imageUrl);
-    const webDetection = result.webDetection;
+    // 여러 Vision API 기능을 동시에 호출 (더 많은 정보 획득)
+    const [result] = await visionClient.annotateImage({
+      image: { source: { imageUri: imageUrl } },
+      features: [
+        { type: 'WEB_DETECTION', maxResults: 20 },
+        { type: 'LABEL_DETECTION', maxResults: 10 },
+        { type: 'LOGO_DETECTION', maxResults: 5 },
+        { type: 'PRODUCT_SEARCH', maxResults: 10 },
+      ],
+    });
 
-    if (!webDetection) {
-      return { entities: [], pages: [], matches: [] };
-    }
+    const webDetection = result.webDetection || {};
+    const labels = result.labelAnnotations || [];
+    const logos = result.logoAnnotations || [];
+
+    console.log(`📌 라벨 감지: ${labels.map(l => l.description).join(', ')}`);
+    console.log(`🏷️ 로고 감지: ${logos.map(l => l.description).join(', ')}`);
 
     return {
       // 웹 엔티티 (브랜드명, 상품명 등)
@@ -215,10 +226,66 @@ const detectWebEntities = async (imageUrl) => {
       partialMatches: webDetection.partialMatchingImages || [],
       // 베스트 추측 라벨 (상품명으로 활용)
       bestGuessLabels: webDetection.bestGuessLabels || [],
+      // 추가: 라벨 (의류, 신발 등 카테고리)
+      labels: labels,
+      // 추가: 로고 (브랜드명)
+      logos: logos,
     };
   } catch (error) {
     console.error("Vision API Error:", error.message);
     throw error;
+  }
+};
+
+// 🔎 네이버 쇼핑 검색 (Vision API 결과 없을 때 대체)
+const searchNaverShopping = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    
+    console.log(`🔎 네이버 쇼핑 검색: ${keyword}`);
+    
+    // 네이버 쇼핑 검색 페이지 스크래핑
+    const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}`;
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      }
+    });
+
+    const $ = cheerio.load(response.data);
+    const results = [];
+
+    // 네이버 쇼핑 상품 카드 파싱
+    $('[class*="product_item"]').slice(0, 10).each((i, el) => {
+      const $el = $(el);
+      const title = $el.find('[class*="product_title"]').text().trim() ||
+                    $el.find('[class*="productTitle"]').text().trim() ||
+                    $el.find('a[title]').attr('title') || '';
+      const link = $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="price"]').first().text().replace(/[^0-9]/g, '');
+      const price = parseInt(priceText) || 0;
+      const thumbnail = $el.find('img').first().attr('src') || '';
+
+      if (title && link) {
+        results.push({
+          title: cleanSearchQuery(title),
+          price: price,
+          currency: 'KRW',
+          thumbnail: thumbnail,
+          link: link.startsWith('http') ? link : `https://search.shopping.naver.com${link}`,
+          source: '네이버쇼핑',
+          type: 'naver_shopping'
+        });
+      }
+    });
+
+    console.log(`✅ 네이버 쇼핑 결과: ${results.length}개`);
+    return results;
+  } catch (error) {
+    console.error("네이버 쇼핑 검색 에러:", error.message);
+    return [];
   }
 };
 
@@ -314,12 +381,22 @@ exports.searchImage = async (req, res) => {
     const bestGuessLabels = webData.bestGuessLabels || [];
     const entities = webData.entities || [];
     const pages = webData.pages || [];
+    const labels = webData.labels || [];
+    const logos = webData.logos || [];
 
     // 베스트 추측 라벨에서 검색 키워드 추출
     let bestKeyword = "";
     if (bestGuessLabels.length > 0) {
       bestKeyword = bestGuessLabels[0].label || "";
     }
+
+    // 로고에서 브랜드명 추출
+    const brandNames = logos.map(l => l.description);
+    
+    // 라벨에서 카테고리 추출 (의류, 신발 등)
+    const categoryLabels = labels
+      .filter(l => l.score > 0.7)
+      .map(l => l.description);
 
     // 웹 엔티티에서 상품명/브랜드명 추출
     const topEntities = entities
@@ -329,13 +406,47 @@ exports.searchImage = async (req, res) => {
 
     console.log(`🏷️ 감지된 엔티티: ${topEntities.join(', ')}`);
     console.log(`💡 베스트 추측: ${bestKeyword}`);
+    console.log(`👕 카테고리: ${categoryLabels.join(', ')}`);
+    console.log(`🏪 브랜드: ${brandNames.join(', ')}`);
+
+    // 검색 키워드 조합 (브랜드 + 카테고리 또는 베스트 추측)
+    let searchKeyword = bestKeyword;
+    if (!searchKeyword && brandNames.length > 0) {
+      searchKeyword = brandNames[0];
+      if (categoryLabels.length > 0) {
+        searchKeyword += ' ' + categoryLabels[0];
+      }
+    }
+    if (!searchKeyword && topEntities.length > 0) {
+      searchKeyword = topEntities.slice(0, 2).join(' ');
+    }
+    if (!searchKeyword && categoryLabels.length > 0) {
+      searchKeyword = categoryLabels.slice(0, 2).join(' ');
+    }
 
     // --- [3단계] 매칭 페이지들에서 상품 정보 추출 ---
     console.log(`🌐 [3단계] 매칭 페이지 ${pages.length}개 분석 중...`);
 
-    // 결과가 없으면 빈 배열 반환
-    if (pages.length === 0 && entities.length === 0) {
-      console.log(`⚠️ Vision API에서 결과를 찾지 못했습니다.`);
+    // Vision API 결과가 부족하면 네이버 쇼핑 검색으로 보완
+    if (pages.length === 0 && searchKeyword) {
+      console.log(`⚠️ Vision API 결과 부족, 네이버 쇼핑으로 대체 검색...`);
+      const naverResults = await searchNaverShopping(searchKeyword);
+      
+      if (naverResults.length > 0) {
+        return res.json({
+          message: "검색 성공 (네이버 쇼핑)",
+          count: naverResults.length,
+          searchImage: targetUrl,
+          searchKeyword: searchKeyword,
+          detectedEntities: [...brandNames, ...topEntities, ...categoryLabels],
+          results: naverResults
+        });
+      }
+    }
+
+    // 결과가 전혀 없으면 빈 배열 반환
+    if (pages.length === 0 && entities.length === 0 && !searchKeyword) {
+      console.log(`⚠️ 검색 결과를 찾지 못했습니다.`);
       return res.json({
         message: "검색 완료 - 일치하는 상품을 찾지 못했습니다",
         count: 0,
@@ -445,14 +556,28 @@ exports.searchImage = async (req, res) => {
       return a.price - b.price;
     });
 
+    // 결과가 부족하면 네이버 쇼핑으로 보완
+    if (finalResults.length < 5 && searchKeyword) {
+      console.log(`⚠️ 결과 부족 (${finalResults.length}개), 네이버 쇼핑으로 보완...`);
+      const naverResults = await searchNaverShopping(searchKeyword);
+      
+      // 중복 제거하며 추가
+      for (const item of naverResults) {
+        if (!seenUrls.has(item.link)) {
+          seenUrls.add(item.link);
+          finalResults.push(item);
+        }
+      }
+    }
+
     console.log(`✅ 최종 응답: ${finalResults.length}개 상품`);
 
     res.json({
       message: "검색 성공",
       count: finalResults.length,
       searchImage: targetUrl,
-      searchKeyword: bestKeyword || topEntities.join(' '),
-      detectedEntities: topEntities,
+      searchKeyword: searchKeyword || bestKeyword || topEntities.join(' '),
+      detectedEntities: [...brandNames, ...topEntities, ...categoryLabels].filter(Boolean),
       results: finalResults
     });
 
