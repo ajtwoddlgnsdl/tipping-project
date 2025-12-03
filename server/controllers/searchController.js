@@ -984,15 +984,12 @@ const searchAllShoppingMalls = async (keywords, koreanKeywords) => {
   
   const searchPromises = [];
   
-  // 안정적인 쇼핑몰만 사용 (다나와, 11번가, SSG)
-  // 네이버, G마켓, 옥션은 봇 차단이 심해서 제외
+  // 다나와만 사용 (11번가, SSG는 검색 결과 부실해서 제외)
   const stableSearchFunctions = [
     { fn: searchDanawa, name: '다나와' },
-    { fn: search11st, name: '11번가' },
-    { fn: searchSSG, name: 'SSG' },
   ];
   
-  // 각 키워드에 대해 안정적인 쇼핑몰 검색
+  // 각 키워드에 대해 다나와 검색
   keywordList.forEach(keyword => {
     stableSearchFunctions.forEach(({ fn }) => {
       searchPromises.push(fn(keyword));
