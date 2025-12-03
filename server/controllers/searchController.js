@@ -1,231 +1,127 @@
 // server/controllers/searchController.js
+// [v2.0] Vision API ÀÌ¹ÌÁö ÀÎ½Ä + ÃÖÀú°¡ °Ë»ö ½Ã½ºÅÛ
+
 const vision = require('@google-cloud/vision');
 const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const FormData = require('form-data');
 
-// Google Cloud Vision í´ë¼ì´ì–¸íŠ¸ ì´ˆê¸°í™”
-// í™˜ê²½ë³€ìˆ˜ì—ì„œ JSON ì¸ì¦ ì •ë³´ ì½ê¸° (Render ë°°í¬ìš©)
+// Google Cloud Vision Å¬¶óÀÌ¾ðÆ® ÃÊ±âÈ­
 let visionClient;
 
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
-  // ë°°í¬ í™˜ê²½: í™˜ê²½ë³€ìˆ˜ì—ì„œ JSON ì§ì ‘ íŒŒì‹±
   const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
   visionClient = new vision.ImageAnnotatorClient({ credentials });
-  console.log("Vision API: í™˜ê²½ë³€ìˆ˜ ì¸ì¦ ì‚¬ìš©");
+  console.log("Vision API: È¯°æº¯¼ö ÀÎÁõ");
 } else if (process.env.GOOGLE_CLOUD_KEY_PATH) {
-  // ë¡œì»¬ í™˜ê²½: íŒŒì¼ ê²½ë¡œ ì‚¬ìš©
   visionClient = new vision.ImageAnnotatorClient({
     keyFilename: process.env.GOOGLE_CLOUD_KEY_PATH,
   });
-  console.log("Vision API: íŒŒì¼ ê²½ë¡œ ì¸ì¦ ì‚¬ìš©");
+  console.log("Vision API: ÆÄÀÏ °æ·Î ÀÎÁõ");
 } else {
-  console.error("Vision API: ì¸ì¦ ì •ë³´ê°€ ì—†ìŠµë‹ˆë‹¤!");
-  visionClient = new vision.ImageAnnotatorClient(); // ê¸°ë³¸ê°’ (ì‹¤íŒ¨í•  ìˆ˜ ìžˆìŒ)
+  console.error("Vision API: ÀÎÁõ Á¤º¸ ¾øÀ½!");
+  visionClient = new vision.ImageAnnotatorClient();
 }
 
-// ðŸ” ì›¹íŽ˜ì´ì§€ì—ì„œ ê°€ê²© ì •ë³´ ìŠ¤í¬ëž˜í•‘
-const scrapePrice = async (url) => {
-  try {
-    const response = await axios.get(url, {
-      timeout: 5000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-      }
-    });
+// ºê·£µå µ¥ÀÌÅÍº£ÀÌ½º
+const BRAND_DATABASE = [
+  'Nike', 'Adidas', 'Puma', 'New Balance', 'Converse', 'Vans', 'Reebok', 'Asics', 'Fila',
+  'Under Armour', 'Jordan', 'Skechers', 'Crocs', 'Birkenstock',
+  'Gucci', 'Louis Vuitton', 'Chanel', 'Prada', 'Balenciaga', 'Dior', 'Burberry', 'Hermes',
+  'Zara', 'H&M', 'Uniqlo', 'GAP', 'Mango',
+  'The North Face', 'Patagonia', 'Columbia', 'Moncler', 'Canada Goose',
+  'Apple', 'Samsung', 'LG', 'Sony', 'Bose', 'JBL', 'Dyson',
+  'Canon', 'Nikon', 'Fujifilm', 'GoPro', 'DJI', 'Xiaomi',
+  'AirPods', 'iPhone', 'iPad', 'MacBook', 'Galaxy', 'PlayStation', 'Nintendo',
+];
 
-    const $ = cheerio.load(response.data);
-    let price = 0;
-
-    // ê°€ê²© ì¶”ì¶œ íŒ¨í„´ë“¤ (ì—¬ëŸ¬ ì‚¬ì´íŠ¸ ëŒ€ì‘)
-    const priceSelectors = [
-      // ì¼ë°˜ì ì¸ ê°€ê²© ì„ íƒìžë“¤
-      '[class*="price"]',
-      '[class*="Price"]',
-      '[class*="cost"]',
-      '[id*="price"]',
-      '[data-price]',
-      '.sale-price',
-      '.final-price',
-      '.product-price',
-      // í•œêµ­ ì‡¼í•‘ëª° íŠ¹í™”
-      '.prd_price',
-      '.product_price',
-      '.sell_price',
-      // êµ¬ì¡°í™”ëœ ë°ì´í„°
-      '[itemprop="price"]',
-      'meta[property="product:price:amount"]',
-    ];
-
-    // 1. êµ¬ì¡°í™”ëœ ë°ì´í„° ë¨¼ì € í™•ì¸ (ê°€ìž¥ ì •í™•í•¨)
-    const metaPrice = $('meta[property="product:price:amount"]').attr('content');
-    if (metaPrice) {
-      price = parseFloat(metaPrice.replace(/[^0-9.]/g, ''));
-      if (price > 0) return { price, currency: 'KRW' };
-    }
-
-    const itemPropPrice = $('[itemprop="price"]').attr('content') || $('[itemprop="price"]').text();
-    if (itemPropPrice) {
-      price = parseFloat(itemPropPrice.replace(/[^0-9.]/g, ''));
-      if (price > 0) return { price, currency: 'KRW' };
-    }
-
-    // 2. ì¼ë°˜ ì„ íƒìžë“¤ ì‹œë„
-    for (const selector of priceSelectors) {
-      const elements = $(selector);
-      elements.each((_, el) => {
-        const text = $(el).text() || $(el).attr('content') || '';
-        // ìˆ«ìž ì¶”ì¶œ (ì½¤ë§ˆ, ì›, â‚© ë“± ì œê±°)
-        const match = text.match(/[\d,]+(?:\.\d+)?/);
-        if (match) {
-          const extracted = parseFloat(match[0].replace(/,/g, ''));
-          // í•©ë¦¬ì ì¸ ê°€ê²© ë²”ìœ„ (100ì› ~ 1ì–µì›)
-          if (extracted >= 100 && extracted <= 100000000 && extracted > price) {
-            price = extracted;
-          }
-        }
-      });
-      if (price > 0) break;
-    }
-
-    // 3. JSON-LD êµ¬ì¡°í™” ë°ì´í„° í™•ì¸
-    if (price === 0) {
-      $('script[type="application/ld+json"]').each((_, el) => {
-        try {
-          const jsonLd = JSON.parse($(el).html());
-          const findPrice = (obj) => {
-            if (!obj) return;
-            if (obj.price) return parseFloat(String(obj.price).replace(/[^0-9.]/g, ''));
-            if (obj.offers?.price) return parseFloat(String(obj.offers.price).replace(/[^0-9.]/g, ''));
-            if (Array.isArray(obj)) {
-              for (const item of obj) {
-                const found = findPrice(item);
-                if (found) return found;
-              }
-            }
-          };
-          const found = findPrice(jsonLd);
-          if (found && found > price) price = found;
-        } catch (e) { /* JSON íŒŒì‹± ì‹¤íŒ¨ ë¬´ì‹œ */ }
-      });
-    }
-
-    return { price: Math.round(price), currency: 'KRW' };
-
-  } catch (error) {
-    console.log(`âš ï¸ ìŠ¤í¬ëž˜í•‘ ì‹¤íŒ¨ (${url.substring(0, 50)}...): ${error.message}`);
-    return { price: 0, currency: 'KRW' };
-  }
+// ¿µ¾î-ÇÑ±Û ºê·£µå ¸ÅÇÎ
+const BRAND_KR_MAP = {
+  'nike': '³ªÀÌÅ°', 'adidas': '¾Æµð´Ù½º', 'puma': 'Çª¸¶',
+  'new balance': '´º¹ß¶õ½º', 'converse': 'ÄÁ¹ö½º', 'vans': '¹Ý½º',
+  'the north face': '³ë½ºÆäÀÌ½º', 'north face': '³ë½ºÆäÀÌ½º',
+  'apple': '¾ÖÇÃ', 'samsung': '»ï¼º', 'sony': '¼Ò´Ï', 'dyson': '´ÙÀÌ½¼',
+  'gucci': '±¸Âî', 'louis vuitton': '·çÀÌºñÅë', 'chanel': '»þ³Ú',
+  'uniqlo': 'À¯´ÏÅ¬·Î', 'zara': 'ÀÚ¶ó',
+  'airpods': '¿¡¾îÆÌ', 'iphone': '¾ÆÀÌÆù', 'macbook': '¸ÆºÏ', 'galaxy': '°¶·°½Ã',
 };
 
-// ðŸ’¡ [ìµœì¢… ê°•í™”íŒ] ë§ŒëŠ¥ í™˜ìœ¨ ê³„ì‚°ê¸° (2025ë…„ ê¸°ì¤€)
-const exchangeToKRW = (price, currency) => {
-  // 1. ì˜ˆì™¸ ì²˜ë¦¬: ê°€ê²©ì´ ì—†ê±°ë‚˜ ìˆ«ìžê°€ ì•„ë‹ˆë©´ 0
-  if (!price || isNaN(price)) return 0;
-
-  // 2. í†µí™” ì½”ë“œ ì •ì œ: ê³µë°± ì œê±° ë° ëŒ€ë¬¸ìž ë³€í™˜ (ì˜ˆ: " US $ " -> "US$")
-  const curr = currency ? currency.toString().toUpperCase().replace(/\s/g, '') : 'KRW';
-
-  // --- [Group 1] í•œêµ­ ì›í™” (ë³€í™˜ ë¶ˆí•„ìš”) ---
-  if (curr === 'KRW' || curr.includes('WON') || curr.includes('â‚©') || curr.includes('ì›')) {
-    return Math.round(price);
-  }
-
-  // --- [Group 2] í—·ê°ˆë¦¬ëŠ” ë‹¬ëŸ¬ í˜•ì œë“¤ (ë°˜ë“œì‹œ USDë³´ë‹¤ ë¨¼ì € ê²€ì‚¬í•´ì•¼ í•¨!) ---
-  // í˜¸ì£¼ ë‹¬ëŸ¬ (AUD)
-  if (curr.includes('AUD') || curr.includes('AU$') || curr.includes('A$')) {
-    return Math.round(price * 930);
-  }
-  // ëŒ€ë§Œ ë‹¬ëŸ¬ (TWD)
-  if (curr.includes('TWD') || curr.includes('NT$') || curr.includes('NTD')) {
-    return Math.round(price * 44);
-  }
-  // í™ì½© ë‹¬ëŸ¬ (HKD)
-  if (curr.includes('HKD') || curr.includes('HK$')) {
-    return Math.round(price * 183);
-  }
-  // ìºë‚˜ë‹¤ ë‹¬ëŸ¬ (CAD)
-  if (curr.includes('CAD') || curr.includes('CA$') || curr.includes('C$')) {
-    return Math.round(price * 1000);
-  }
-  // ì‹±ê°€í¬ë¥´ ë‹¬ëŸ¬ (SGD)
-  if (curr.includes('SGD') || curr.includes('S$')) {
-    return Math.round(price * 1060);
-  }
-
-  // --- [Group 3] ë©”ì´ì € í†µí™” ---
-  // ë¯¸êµ­ ë‹¬ëŸ¬ (USD) - ìœ„ì˜ íŠ¹ìˆ˜ ë‹¬ëŸ¬ë“¤ì´ ì•„ë‹ ë•Œ ë¹„ë¡œì†Œ ì²´í¬
-  if (curr.includes('USD') || curr.includes('US$') || curr === '$') {
-    return Math.round(price * 1430);
-  }
-
-  // ì¼ë³¸ ì—”í™” (JPY)
-  if (curr.includes('JPY') || curr.includes('JPÂ¥') || curr.includes('Â¥') || curr.includes('YEN')) {
-    return Math.round(price * 9.5);
-  }
-
-  // ì¤‘êµ­ ìœ„ì•ˆí™” (CNY)
-  if (curr.includes('CNY') || curr.includes('CNÂ¥') || curr.includes('RMB') || curr.includes('å…ƒ')) {
-    return Math.round(price * 195);
-  }
-
-  // ìœ ë¡œ (EUR)
-  if (curr.includes('EUR') || curr.includes('â‚¬')) {
-    return Math.round(price * 1550);
-  }
-
-  // ì˜êµ­ íŒŒìš´ë“œ (GBP)
-  if (curr.includes('GBP') || curr.includes('Â£')) {
-    return Math.round(price * 1800);
-  }
-
-  // --- [Group 4] ê¸°íƒ€ ---
-  // ë² íŠ¸ë‚¨ ë™ (VND)
-  if (curr.includes('VND') || curr.includes('â‚«')) {
-    return Math.round(price * 0.06);
-  }
-
-  // ëª¨ë¥´ëŠ” í†µí™”ëŠ” ë¡œê·¸ë¥¼ ë‚¨ê¸°ê³  ì›ë³¸ ìˆ«ìž ë°˜í™˜ (0ì›ìœ¼ë¡œ ì£½ì´ëŠ” ê²ƒë³´ë‹¨ ë‚˜ìŒ)
-  // console.log(`âš ï¸ ì•Œ ìˆ˜ ì—†ëŠ” í†µí™” ë°œê²¬: ${curr} (ê°’: ${price})`);
-  return Math.round(price);
+// Ä«Å×°í¸® ¸ÅÇÎ
+const CATEGORY_KR_MAP = {
+  'shoes': '½Å¹ß', 'sneakers': '½º´ÏÄ¿Áî', 'boots': 'ºÎÃ÷',
+  'shirt': '¼ÅÃ÷', 't-shirt': 'Æ¼¼ÅÃ÷', 'pants': '¹ÙÁö', 'jeans': 'Ã»¹ÙÁö',
+  'jacket': 'ÀÚÄÏ', 'coat': 'ÄÚÆ®', 'hoodie': 'ÈÄµåÆ¼',
+  'bag': '°¡¹æ', 'backpack': '¹éÆÑ', 'handbag': 'ÇÚµå¹é',
+  'headphones': 'ÇìµåÆù', 'earphones': 'ÀÌ¾îÆù', 'watch': '½Ã°è',
 };
 
-// ðŸŒ Google Cloud Vision - ì›¹ ê°ì§€ (Web Detection)
+// °Ë»ö¾î Á¤Á¦
+const cleanSearchQuery = (text) => {
+  if (!text) return "";
+  const noiseWords = [
+    'Musinsa', 'Coupang', 'Naver', '29CM', 'Amazon', 'AliExpress', 'eBay',
+    'Sale', 'Free Shipping', 'Best', 'Hot', 'New', 'Limited', 'Official',
+    'www', 'http', 'https', 'com', 'co', 'kr', 'net',
+    'Store', 'Shop', 'Online', 'Buy', 'Order', 'Image', 'Photo',
+  ];
+  let cleaned = text;
+  noiseWords.forEach(word => {
+    cleaned = cleaned.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
+  });
+  cleaned = cleaned.replace(/[|/\-_\[\](){}:;'"<>#@!?*&^%$~`+=]/g, ' ');
+  return cleaned.replace(/\s+/g, ' ').trim();
+};
+
+// ¿µ¾î¸¦ ÇÑ±Û·Î º¯È¯
+const translateToKorean = (text) => {
+  if (!text) return text;
+  let result = text.toLowerCase();
+  for (const [eng, kr] of Object.entries(BRAND_KR_MAP)) {
+    if (result.includes(eng)) result = result.replace(new RegExp(eng, 'gi'), kr);
+  }
+  for (const [eng, kr] of Object.entries(CATEGORY_KR_MAP)) {
+    if (result.includes(eng)) result = result.replace(new RegExp(eng, 'gi'), kr);
+  }
+  return result;
+};
+
+// ºê·£µå °¨Áö
+const detectBrand = (entities) => {
+  if (!entities || !Array.isArray(entities)) return null;
+  const entityTexts = entities.filter(e => e && e.description).map(e => e.description.toLowerCase());
+  for (const brand of BRAND_DATABASE) {
+    if (entityTexts.some(text => text.includes(brand.toLowerCase()))) return brand;
+  }
+  return null;
+};
+
+// °Ë»ö Å°¿öµå »ý¼º
+const generateSearchKeyword = (bestGuessLabel, entities, brand) => {
+  let keyword = "";
+  if (bestGuessLabel) keyword = cleanSearchQuery(bestGuessLabel);
+  if (brand && keyword && !keyword.toLowerCase().includes(brand.toLowerCase())) {
+    keyword = `${brand} ${keyword}`;
+  }
+  if (!keyword && entities && entities.length > 0) {
+    const topEntities = entities.filter(e => e && e.description && e.score > 0.3).slice(0, 3).map(e => e.description);
+    keyword = topEntities.join(' ');
+  }
+  const koreanKeyword = translateToKorean(keyword);
+  return { original: keyword, korean: koreanKeyword !== keyword.toLowerCase() ? koreanKeyword : null };
+};
+
+// Vision API - À¥ °¨Áö
 const detectWebEntities = async (imageUrl) => {
   try {
-    // ì›ëž˜ ë°©ì‹: webDetection (ìƒí’ˆ ê²€ìƒ‰ì— ê°€ìž¥ íš¨ê³¼ì )
     const [result] = await visionClient.webDetection(imageUrl);
     const webDetection = result.webDetection;
-
-    if (!webDetection) {
-      console.log("âš ï¸ webDetection ê²°ê³¼ ì—†ìŒ");
-      return { entities: [], pages: [], matches: [], labels: [], logos: [] };
-    }
-
-    console.log(`ðŸ“Š Vision API ê²°ê³¼:`);
-    console.log(`   - ì›¹ ì—”í‹°í‹°: ${webDetection.webEntities?.length || 0}ê°œ`);
-    console.log(`   - ë§¤ì¹­ íŽ˜ì´ì§€: ${webDetection.pagesWithMatchingImages?.length || 0}ê°œ`);
-    console.log(`   - ìœ ì‚¬ ì´ë¯¸ì§€: ${webDetection.visuallySimilarImages?.length || 0}ê°œ`);
-    console.log(`   - ì™„ì „ ì¼ì¹˜: ${webDetection.fullMatchingImages?.length || 0}ê°œ`);
-
+    if (!webDetection) return { entities: [], pages: [], bestGuessLabels: [] };
+    console.log(`Vision API: ${webDetection.webEntities?.length || 0} entities, ${webDetection.bestGuessLabels?.map(l => l.label).join(', ') || 'no guess'}`);
     return {
-      // ì›¹ ì—”í‹°í‹° (ë¸Œëžœë“œëª…, ìƒí’ˆëª… ë“±)
       entities: webDetection.webEntities || [],
-      // ì´ë¯¸ì§€ê°€ í¬í•¨ëœ íŽ˜ì´ì§€ë“¤ (ì‡¼í•‘ëª° URL ë“±)
       pages: webDetection.pagesWithMatchingImages || [],
-      // ì‹œê°ì ìœ¼ë¡œ ìœ ì‚¬í•œ ì´ë¯¸ì§€ë“¤
-      matches: webDetection.visuallySimilarImages || [],
-      // ì™„ì „ížˆ ì¼ì¹˜í•˜ëŠ” ì´ë¯¸ì§€ë“¤
-      fullMatches: webDetection.fullMatchingImages || [],
-      // ë¶€ë¶„ ì¼ì¹˜ ì´ë¯¸ì§€ë“¤
-      partialMatches: webDetection.partialMatchingImages || [],
-      // ë² ìŠ¤íŠ¸ ì¶”ì¸¡ ë¼ë²¨ (ìƒí’ˆëª…ìœ¼ë¡œ í™œìš©)
       bestGuessLabels: webDetection.bestGuessLabels || [],
-      // ë¹ˆ ë°°ì—´ (í˜¸í™˜ì„± ìœ ì§€)
-      labels: [],
-      logos: [],
     };
   } catch (error) {
     console.error("Vision API Error:", error.message);
@@ -233,14 +129,27 @@ const detectWebEntities = async (imageUrl) => {
   }
 };
 
-// ðŸ”Ž ë„¤ì´ë²„ ì‡¼í•‘ ê²€ìƒ‰ (Vision API ê²°ê³¼ ì—†ì„ ë•Œ ëŒ€ì²´)
+// Vision API - ¶óº§ °¨Áö
+const detectLabels = async (imageUrl) => {
+  try {
+    const [result] = await visionClient.labelDetection(imageUrl);
+    return (result.labelAnnotations || []).filter(l => l.score > 0.7).map(l => l.description);
+  } catch (error) { return []; }
+};
+
+// Vision API - ·Î°í °¨Áö
+const detectLogos = async (imageUrl) => {
+  try {
+    const [result] = await visionClient.logoDetection(imageUrl);
+    return (result.logoAnnotations || []).filter(l => l.score > 0.5).map(l => l.description);
+  } catch (error) { return []; }
+};
+
+// ³×ÀÌ¹ö ¼îÇÎ °Ë»ö
 const searchNaverShopping = async (keyword) => {
   try {
     if (!keyword) return [];
-    
-    console.log(`ðŸ”Ž ë„¤ì´ë²„ ì‡¼í•‘ ê²€ìƒ‰: ${keyword}`);
-    
-    // ë„¤ì´ë²„ ì‡¼í•‘ ê²€ìƒ‰ íŽ˜ì´ì§€ ìŠ¤í¬ëž˜í•‘
+    console.log(`[³×ÀÌ¹ö] °Ë»ö: "${keyword}"`);
     const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}&sort=price_asc`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
@@ -249,339 +158,398 @@ const searchNaverShopping = async (keyword) => {
         'Accept-Language': 'ko-KR,ko;q=0.9',
       }
     });
-
     const $ = cheerio.load(response.data);
     const results = [];
-
-    // ë„¤ì´ë²„ ì‡¼í•‘ ìƒí’ˆ ì¹´ë“œ íŒŒì‹±
-    $('[class*="product_item"]').slice(0, 10).each((i, el) => {
-      const $el = $(el);
-      const title = $el.find('[class*="product_title"]').text().trim() ||
-                    $el.find('[class*="productTitle"]').text().trim() ||
-                    $el.find('a[title]').attr('title') || '';
-      const link = $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('[class*="price"]').first().text().replace(/[^0-9]/g, '');
-      const price = parseInt(priceText) || 0;
-      const thumbnail = $el.find('img').first().attr('src') || '';
-
-      if (title && link) {
-        results.push({
-          title: cleanSearchQuery(title),
-          price: price,
-          currency: 'KRW',
-          thumbnail: thumbnail,
-          link: link.startsWith('http') ? link : `https://search.shopping.naver.com${link}`,
-          source: 'ë„¤ì´ë²„ì‡¼í•‘',
-          type: 'shopping'
-        });
-      }
-    });
-
-    console.log(`âœ… ë„¤ì´ë²„ ì‡¼í•‘ ê²°ê³¼: ${results.length}ê°œ`);
+    const selectors = ['div[class*="product_item"]', 'li[class*="product_item"]', 'div[class*="basicList_item"]'];
+    for (const selector of selectors) {
+      $(selector).slice(0, 12).each((i, el) => {
+        const $el = $(el);
+        let title = $el.find('[class*="product_title"]').text().trim() ||
+                    $el.find('[class*="title"]').first().text().trim() ||
+                    $el.find('a[title]').attr('title');
+        let link = $el.find('a[href*="shopping"]').first().attr('href') ||
+                   $el.find('a[href*="smartstore"]').first().attr('href') ||
+                   $el.find('a').first().attr('href') || '';
+        let priceText = $el.find('[class*="price_num"]').first().text() ||
+                        $el.find('[class*="price"]').first().text();
+        const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
+        let thumbnail = $el.find('img[src]').first().attr('src') ||
+                        $el.find('img[data-src]').first().attr('data-src') || '';
+        const mall = $el.find('[class*="mall"]').text().trim() || '³×ÀÌ¹ö¼îÇÎ';
+        if (title && link && title.length > 2) {
+          if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : 'https://search.shopping.naver.com' + link;
+          if (thumbnail && !thumbnail.startsWith('http')) thumbnail = thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail;
+          results.push({ title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW', thumbnail, link, source: mall, type: 'shopping' });
+        }
+      });
+      if (results.length >= 5) break;
+    }
+    console.log(`[³×ÀÌ¹ö] ${results.length}°³ »óÇ°`);
     return results;
   } catch (error) {
-    console.error("ë„¤ì´ë²„ ì‡¼í•‘ ê²€ìƒ‰ ì—ëŸ¬:", error.message);
+    console.error("[³×ÀÌ¹ö] ¿¡·¯:", error.message);
     return [];
   }
 };
 
-// ðŸ”Ž ì¿ íŒ¡ ê²€ìƒ‰
-const searchCoupang = async (keyword) => {
+// ´Ù³ª¿Í °Ë»ö
+const searchDanawa = async (keyword) => {
   try {
     if (!keyword) return [];
-    
-    console.log(`ðŸ”Ž ì¿ íŒ¡ ê²€ìƒ‰: ${keyword}`);
-    
-    const searchUrl = `https://www.coupang.com/np/search?component=&q=${encodeURIComponent(keyword)}&channel=user&sorter=priceAsc`;
+    console.log(`[´Ù³ª¿Í] °Ë»ö: "${keyword}"`);
+    const searchUrl = `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(keyword)}&tab=main&sort=lowprice`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ko-KR,ko;q=0.9',
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
     });
-
     const $ = cheerio.load(response.data);
     const results = [];
-
-    $('li.search-product').slice(0, 8).each((i, el) => {
+    $('li.prod_item, div.prod_item').slice(0, 8).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('.name').text().trim();
-      const link = $el.find('a.search-product-link').attr('href');
-      const priceText = $el.find('.price-value').text().replace(/[^0-9]/g, '');
-      const price = parseInt(priceText) || 0;
-      const thumbnail = $el.find('img').attr('src') || $el.find('img').attr('data-img-src') || '';
-
+      const title = $el.find('.prod_name a').text().trim() || $el.find('[class*="prod_name"]').text().trim();
+      const link = $el.find('.prod_name a').attr('href') || $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('.price_sect strong').text() || $el.find('[class*="price"] strong').text();
+      const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
+      const thumbnail = $el.find('.thumb_image img').attr('src') || $el.find('img').first().attr('src') || '';
       if (title && link) {
         results.push({
-          title: title,
-          price: price,
-          currency: 'KRW',
+          title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
-          link: link.startsWith('http') ? link : `https://www.coupang.com${link}`,
-          source: 'ì¿ íŒ¡',
-          type: 'shopping'
+          link: link.startsWith('http') ? link : `https://search.danawa.com${link}`,
+          source: '´Ù³ª¿Í', type: 'shopping'
         });
       }
     });
-
-    console.log(`âœ… ì¿ íŒ¡ ê²°ê³¼: ${results.length}ê°œ`);
+    console.log(`[´Ù³ª¿Í] ${results.length}°³ »óÇ°`);
     return results;
   } catch (error) {
-    console.error("ì¿ íŒ¡ ê²€ìƒ‰ ì—ëŸ¬:", error.message);
+    console.error("[´Ù³ª¿Í] ¿¡·¯:", error.message);
     return [];
   }
 };
 
-// ðŸ”Ž Gë§ˆì¼“ ê²€ìƒ‰
+// 11¹ø°¡ °Ë»ö
+const search11st = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    console.log(`[11¹ø°¡] °Ë»ö: "${keyword}"`);
+    const searchUrl = `https://search.11st.co.kr/Search.tmall?kwd=${encodeURIComponent(keyword)}&sortCd=LWPR`;
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+    });
+    const $ = cheerio.load(response.data);
+    const results = [];
+    $('li.c_item, div.c_item, li[data-log-body]').slice(0, 8).each((i, el) => {
+      const $el = $(el);
+      const title = $el.find('.c_tit a').text().trim() || $el.find('[class*="title"]').text().trim();
+      let link = $el.find('.c_tit a').attr('href') || $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('.c_prc strong').text() || $el.find('[class*="price"] strong').text();
+      const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
+      const thumbnail = $el.find('.c_prd_img img').attr('src') || $el.find('img').first().attr('src') || '';
+      if (title && link) {
+        if (!link.startsWith('http')) link = `https://www.11st.co.kr${link}`;
+        results.push({
+          title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
+          thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+          link, source: '11¹ø°¡', type: 'shopping'
+        });
+      }
+    });
+    console.log(`[11¹ø°¡] ${results.length}°³ »óÇ°`);
+    return results;
+  } catch (error) {
+    console.error("[11¹ø°¡] ¿¡·¯:", error.message);
+    return [];
+  }
+};
+
+// G¸¶ÄÏ °Ë»ö
 const searchGmarket = async (keyword) => {
   try {
     if (!keyword) return [];
-    
-    console.log(`ðŸ”Ž Gë§ˆì¼“ ê²€ìƒ‰: ${keyword}`);
-    
+    console.log(`[G¸¶ÄÏ] °Ë»ö: "${keyword}"`);
     const searchUrl = `https://browse.gmarket.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept-Language': 'ko-KR,ko;q=0.9',
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
     });
-
     const $ = cheerio.load(response.data);
     const results = [];
-
-    $('[class*="box__item-container"]').slice(0, 8).each((i, el) => {
+    $('[class*="box__item-container"], li.item__content').slice(0, 8).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('[class*="text__item-title"]').text().trim();
-      const link = $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('[class*="text__value"]').first().text().replace(/[^0-9]/g, '');
-      const price = parseInt(priceText) || 0;
-      const thumbnail = $el.find('img').attr('src') || '';
-
+      const title = $el.find('[class*="text__item-title"]').text().trim() || $el.find('.item_tit').text().trim();
+      let link = $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="text__value"]').first().text() || $el.find('[class*="price"]').text();
+      const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
+      const thumbnail = $el.find('img').attr('src') || $el.find('img').attr('data-src') || '';
       if (title && link) {
+        if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : `https://browse.gmarket.co.kr${link}`;
         results.push({
-          title: title,
-          price: price,
-          currency: 'KRW',
-          thumbnail: thumbnail,
-          link: link.startsWith('http') ? link : `https://browse.gmarket.co.kr${link}`,
-          source: 'Gë§ˆì¼“',
-          type: 'shopping'
+          title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
+          thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+          link, source: 'G¸¶ÄÏ', type: 'shopping'
         });
       }
     });
-
-    console.log(`âœ… Gë§ˆì¼“ ê²°ê³¼: ${results.length}ê°œ`);
+    console.log(`[G¸¶ÄÏ] ${results.length}°³ »óÇ°`);
     return results;
   } catch (error) {
-    console.error("Gë§ˆì¼“ ê²€ìƒ‰ ì—ëŸ¬:", error.message);
+    console.error("[G¸¶ÄÏ] ¿¡·¯:", error.message);
     return [];
   }
 };
 
-// ðŸ”Ž ì—¬ëŸ¬ ì‡¼í•‘ëª° ë™ì‹œ ê²€ìƒ‰
-const searchAllShoppingMalls = async (keyword) => {
+// SSG °Ë»ö
+const searchSSG = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    console.log(`[SSG] °Ë»ö: "${keyword}"`);
+    const searchUrl = `https://www.ssg.com/search.ssg?target=all&query=${encodeURIComponent(keyword)}&sort=price_asc`;
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+    });
+    const $ = cheerio.load(response.data);
+    const results = [];
+    $('li.cunit_t232, li[class*="cunit"]').slice(0, 8).each((i, el) => {
+      const $el = $(el);
+      const title = $el.find('.cunit_info .title').text().trim() || $el.find('[class*="title"]').text().trim();
+      let link = $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('.opt_price .ssg_price').text() || $el.find('[class*="price"]').text();
+      const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
+      const thumbnail = $el.find('.cunit_img img').attr('src') || $el.find('img').first().attr('src') || '';
+      if (title && link) {
+        if (!link.startsWith('http')) link = `https://www.ssg.com${link}`;
+        results.push({
+          title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
+          thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+          link, source: 'SSG', type: 'shopping'
+        });
+      }
+    });
+    console.log(`[SSG] ${results.length}°³ »óÇ°`);
+    return results;
+  } catch (error) {
+    console.error("[SSG] ¿¡·¯:", error.message);
+    return [];
+  }
+};
+
+// ¿Á¼Ç °Ë»ö
+const searchAuction = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    console.log(`[¿Á¼Ç] °Ë»ö: "${keyword}"`);
+    const searchUrl = `https://browse.auction.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+    });
+    const $ = cheerio.load(response.data);
+    const results = [];
+    $('[class*="box__item-container"], li.item__content').slice(0, 8).each((i, el) => {
+      const $el = $(el);
+      const title = $el.find('[class*="text__item-title"]').text().trim() || $el.find('.item_tit').text().trim();
+      let link = $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="text__value"]').first().text() || $el.find('[class*="price"]').text();
+      const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
+      const thumbnail = $el.find('img').attr('src') || '';
+      if (title && link) {
+        if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : `https://browse.auction.co.kr${link}`;
+        results.push({
+          title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
+          thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+          link, source: '¿Á¼Ç', type: 'shopping'
+        });
+      }
+    });
+    console.log(`[¿Á¼Ç] ${results.length}°³ »óÇ°`);
+    return results;
+  } catch (error) {
+    console.error("[¿Á¼Ç] ¿¡·¯:", error.message);
+    return [];
+  }
+};
+
+// ¸ðµç ¼îÇÎ¸ô µ¿½Ã °Ë»ö
+const searchAllShoppingMalls = async (keyword, koreanKeyword) => {
   if (!keyword) return [];
+  console.log(`\n=== ¼îÇÎ¸ô °Ë»ö ½ÃÀÛ: "${keyword}" ===`);
+  if (koreanKeyword) console.log(`ÇÑ±Û Å°¿öµå: "${koreanKeyword}"`);
   
-  console.log(`ðŸ›’ ì—¬ëŸ¬ ì‡¼í•‘ëª° ë™ì‹œ ê²€ìƒ‰: "${keyword}"`);
-  
-  // ë³‘ë ¬ë¡œ ê²€ìƒ‰
-  const [naverResults, coupangResults, gmarketResults] = await Promise.all([
+  const searchPromises = [
     searchNaverShopping(keyword),
-    searchCoupang(keyword),
+    searchDanawa(keyword),
+    search11st(keyword),
     searchGmarket(keyword),
-  ]);
+    searchSSG(keyword),
+    searchAuction(keyword),
+  ];
   
-  // ê²°ê³¼ í•©ì¹˜ê¸°
-  const allResults = [...naverResults, ...coupangResults, ...gmarketResults];
+  if (koreanKeyword && koreanKeyword !== keyword.toLowerCase()) {
+    searchPromises.push(searchNaverShopping(koreanKeyword));
+    searchPromises.push(searchDanawa(koreanKeyword));
+  }
   
-  // ê°€ê²©ìˆœ ì •ë ¬
-  allResults.sort((a, b) => {
+  const allResults = await Promise.all(searchPromises);
+  let combinedResults = allResults.flat();
+  
+  // Áßº¹ Á¦°Å
+  const seenUrls = new Set();
+  combinedResults = combinedResults.filter(item => {
+    if (!item || !item.link) return false;
+    const normalizedUrl = item.link.split('?')[0];
+    if (seenUrls.has(normalizedUrl)) return false;
+    seenUrls.add(normalizedUrl);
+    return true;
+  });
+  
+  // °¡°Ý¼ø Á¤·Ä
+  combinedResults.sort((a, b) => {
     if (a.price > 0 && b.price === 0) return -1;
     if (a.price === 0 && b.price > 0) return 1;
     return a.price - b.price;
   });
   
-  console.log(`âœ… ì´ ${allResults.length}ê°œ ìƒí’ˆ ì°¾ìŒ`);
-  return allResults;
+  console.log(`=== ÃÑ ${combinedResults.length}°³ »óÇ° ===\n`);
+  return combinedResults;
 };
 
-// 3. [ë¬´ë£Œ] ê·œì¹™ ê¸°ë°˜ ê²€ìƒ‰ì–´ ì²­ì†Œê¸°
-const cleanSearchQuery = (title) => {
-  if (!title) return "";
-  const blockList = [
-    'Musinsa', 'Coupang', 'Naver', '29CM', 'Zigzag', 'W Concept',
-    'Amazon', 'AliExpress', 'Shein', 'Temu',
-    'Sale', 'Free Shipping', 'Best', 'Rocket', 'Anolorcode',
-    // URL/ë„ë©”ì¸ ê´€ë ¨
-    'www', 'http', 'https', 'com', 'co', 'kr', 'net',
-    // ì¼ë°˜ì ì¸ ë…¸ì´ì¦ˆ
-    'Official', 'Store', 'Shop', 'Online', 'Buy', 'Order'
-  ];
-  let cleaned = title;
-  blockList.forEach(word => {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
-    cleaned = cleaned.replace(regex, '');
+// ImgBB ¾÷·Îµå
+const uploadToImgBB = async (filePath) => {
+  const formData = new FormData();
+  formData.append('image', fs.createReadStream(filePath));
+  formData.append('key', process.env.IMGBB_KEY);
+  const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
+    headers: formData.getHeaders(),
+    timeout: 30000,
   });
-  cleaned = cleaned.replace(/[|/\-_\[\](){}:;'"<>]/g, ' ');
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  return cleaned;
+  return response.data.data.url;
 };
 
-// ðŸª ì‡¼í•‘ëª° URLì¸ì§€ íŒë³„ (ìš°ì„ ìˆœìœ„ ë†’ì€ URL í•„í„°ë§)
-const isShoppingUrl = (url) => {
-  const shoppingDomains = [
-    // í•œêµ­
-    'coupang.com', 'gmarket.co.kr', '11st.co.kr', 'auction.co.kr',
-    'musinsa.com', 'zigzag.kr', '29cm.co.kr', 'wconcept.co.kr',
-    'ssg.com', 'lotteon.com', 'tmon.co.kr', 'wemakeprice.com',
-    'naver.com', 'smartstore.naver.com', 'shopping.naver.com',
-    'brandi.co.kr', 'ably.com', 'oliveyoung.co.kr',
-    // ê¸€ë¡œë²Œ
-    'amazon.com', 'amazon.co.jp', 'ebay.com',
-    'aliexpress.com', 'shein.com', 'temu.com',
-    'uniqlo.com', 'zara.com', 'hm.com', 'nike.com', 'adidas.com',
-    'asos.com', 'farfetch.com', 'ssense.com', 'mrporter.com',
-  ];
-  return shoppingDomains.some(domain => url.includes(domain));
-};
-
-// ðŸ”— URLì—ì„œ ì¸ë„¤ì¼ ì´ë¯¸ì§€ ì¶”ì¶œ ì‹œë„
-const extractThumbnailFromPage = async (url) => {
-  try {
-    const response = await axios.get(url, {
-      timeout: 5000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      }
-    });
-    const $ = cheerio.load(response.data);
-    
-    // Open Graph ì´ë¯¸ì§€
-    let thumbnail = $('meta[property="og:image"]').attr('content');
-    if (thumbnail) return thumbnail;
-    
-    // Twitter ì¹´ë“œ ì´ë¯¸ì§€
-    thumbnail = $('meta[name="twitter:image"]').attr('content');
-    if (thumbnail) return thumbnail;
-    
-    // ì²« ë²ˆì§¸ ìƒí’ˆ ì´ë¯¸ì§€
-    thumbnail = $('[class*="product"] img').first().attr('src');
-    if (thumbnail) return thumbnail;
-    
-    return null;
-  } catch {
-    return null;
-  }
-};
-
+// ¸ÞÀÎ ÀÌ¹ÌÁö °Ë»ö API
 exports.searchImage = async (req, res) => {
+  const startTime = Date.now();
   try {
-    // --- [1ë‹¨ê³„] ì´ë¯¸ì§€ URL í™•ë³´ ---
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`ÀÌ¹ÌÁö °Ë»ö ½ÃÀÛ - ${new Date().toLocaleString('ko-KR')}`);
+    console.log(`${'='.repeat(50)}`);
+
+    // [1´Ü°è] ÀÌ¹ÌÁö URL È®º¸
     let targetUrl = req.body.imageUrl;
     if (req.file) {
-      console.log(`ðŸ“¤ [1ë‹¨ê³„] ì´ë¯¸ì§€ í˜¸ìŠ¤íŒ… ì¤‘...`);
-      const formData = new FormData();
-      formData.append('image', fs.createReadStream(req.file.path));
-      formData.append('key', process.env.IMGBB_KEY);
-      const imgbbResponse = await axios.post('https://api.imgbb.com/1/upload', formData, { headers: { ...formData.getHeaders() } });
-      targetUrl = imgbbResponse.data.data.url;
+      console.log(`\n[1´Ü°è] ÀÌ¹ÌÁö ¾÷·Îµå Áß... (${req.file.originalname})`);
+      targetUrl = await uploadToImgBB(req.file.path);
       fs.unlinkSync(req.file.path);
+      console.log(`¾÷·Îµå ¿Ï·á: ${targetUrl.substring(0, 50)}...`);
     }
-    if (!targetUrl) return res.status(400).json({ error: "ì´ë¯¸ì§€ URL í•„ìš”" });
+    if (!targetUrl) {
+      return res.status(400).json({ error: "ÀÌ¹ÌÁö°¡ ÇÊ¿äÇÕ´Ï´Ù." });
+    }
 
-    // --- [2ë‹¨ê³„] Google Cloud Vision API - ìƒí’ˆ ì¸ì‹ ---
-    console.log(`ðŸ” [2ë‹¨ê³„] Google Vision APIë¡œ ìƒí’ˆ ì¸ì‹ ì¤‘...`);
-    const webData = await detectWebEntities(targetUrl);
+    // [2´Ü°è] Vision API ºÐ¼®
+    console.log(`\n[2´Ü°è] Vision API ºÐ¼® Áß...`);
+    const [webData, labels, logos] = await Promise.all([
+      detectWebEntities(targetUrl),
+      detectLabels(targetUrl),
+      detectLogos(targetUrl),
+    ]);
 
-    // ì•ˆì „í•˜ê²Œ ë°°ì—´ í™•ì¸
-    const bestGuessLabels = webData.bestGuessLabels || [];
     const entities = webData.entities || [];
+    const bestGuessLabels = webData.bestGuessLabels || [];
+    const bestGuess = bestGuessLabels[0]?.label || "";
+    
+    const topEntities = entities.filter(e => e && e.description && e.score > 0.3).slice(0, 10);
+    console.log(`º£½ºÆ® ÃßÃø: "${bestGuess}"`);
+    console.log(`»óÀ§ ¿£Æ¼Æ¼: ${topEntities.map(e => e.description).join(', ')}`);
+    if (labels.length > 0) console.log(`¶óº§: ${labels.slice(0, 5).join(', ')}`);
+    if (logos.length > 0) console.log(`·Î°í: ${logos.join(', ')}`);
+    
+    const detectedBrand = logos[0] || detectBrand(topEntities);
+    if (detectedBrand) console.log(`°¨ÁöµÈ ºê·£µå: ${detectedBrand}`);
 
-    // ë² ìŠ¤íŠ¸ ì¶”ì¸¡ ë¼ë²¨ì—ì„œ ê²€ìƒ‰ í‚¤ì›Œë“œ ì¶”ì¶œ (ê°€ìž¥ ì¤‘ìš”!)
-    let bestKeyword = "";
-    if (bestGuessLabels.length > 0) {
-      bestKeyword = bestGuessLabels[0].label || "";
-    }
-
-    // ì›¹ ì—”í‹°í‹°ì—ì„œ ìƒí’ˆëª…/ë¸Œëžœë“œëª… ì¶”ì¶œ
-    const topEntities = entities
-      .filter(e => e.score > 0.3)
-      .slice(0, 10)
-      .map(e => e.description);
-
-    console.log(`ðŸ·ï¸ ê°ì§€ëœ ì—”í‹°í‹°: ${topEntities.join(', ')}`);
-    console.log(`ðŸ’¡ ë² ìŠ¤íŠ¸ ì¶”ì¸¡ (ìƒí’ˆëª…): ${bestKeyword}`);
-
-    // ê²€ìƒ‰ í‚¤ì›Œë“œ ê²°ì • (ë² ìŠ¤íŠ¸ ì¶”ì¸¡ > ì—”í‹°í‹° ì¡°í•©)
-    let searchKeyword = bestKeyword;
-    if (!searchKeyword && topEntities.length > 0) {
-      // ì—”í‹°í‹° ì¤‘ ë¸Œëžœë“œ + ìƒí’ˆ ì¡°í•©
-      searchKeyword = topEntities.slice(0, 3).join(' ');
-    }
-
-    // í‚¤ì›Œë“œê°€ ì—†ìœ¼ë©´ ê²€ìƒ‰ ë¶ˆê°€
-    if (!searchKeyword) {
-      console.log(`âš ï¸ ìƒí’ˆì„ ì¸ì‹í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.`);
+    // [3´Ü°è] °Ë»ö Å°¿öµå »ý¼º
+    console.log(`\n[3´Ü°è] °Ë»ö Å°¿öµå »ý¼º Áß...`);
+    const keywords = generateSearchKeyword(bestGuess, topEntities, detectedBrand);
+    console.log(`¿øº»: "${keywords.original}"`);
+    if (keywords.korean) console.log(`ÇÑ±Û: "${keywords.korean}"`);
+    
+    if (!keywords.original) {
+      console.log(`»óÇ° ÀÎ½Ä ½ÇÆÐ`);
       return res.json({
-        message: "ì´ë¯¸ì§€ì—ì„œ ìƒí’ˆì„ ì¸ì‹í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. ë‹¤ë¥¸ ì´ë¯¸ì§€ë¥¼ ì‹œë„í•´ì£¼ì„¸ìš”.",
-        count: 0,
+        success: false,
+        message: "ÀÌ¹ÌÁö¿¡¼­ »óÇ°À» ÀÎ½ÄÇÏÁö ¸øÇß½À´Ï´Ù.",
         searchImage: targetUrl,
         searchKeyword: "",
-        detectedEntities: [],
-        results: []
-      });
-    }
-
-    // --- [3ë‹¨ê³„] ì—¬ëŸ¬ ì‡¼í•‘ëª°ì—ì„œ ìƒí’ˆ ê²€ìƒ‰ ---
-    console.log(`ðŸ›’ [3ë‹¨ê³„] "${searchKeyword}" í‚¤ì›Œë“œë¡œ ì‡¼í•‘ëª° ê²€ìƒ‰ ì¤‘...`);
-    
-    const shoppingResults = await searchAllShoppingMalls(searchKeyword);
-
-    // ê²°ê³¼ê°€ ì—†ìœ¼ë©´
-    if (shoppingResults.length === 0) {
-      return res.json({
-        message: "í•´ë‹¹ ìƒí’ˆì˜ íŒë§¤ì²˜ë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.",
+        detectedBrand: null,
+        detectedLabels: labels.slice(0, 5),
+        detectedEntities: topEntities.map(e => e.description),
         count: 0,
-        searchImage: targetUrl,
-        searchKeyword: searchKeyword,
-        detectedEntities: topEntities,
-        results: []
+        results: [],
+        processingTime: `${Date.now() - startTime}ms`,
       });
     }
 
-    // --- [4ë‹¨ê³„] ê²°ê³¼ ì •ë¦¬ ë° ì‘ë‹µ ---
-    // ì¤‘ë³µ ì œê±°
-    const seenUrls = new Set();
-    const uniqueResults = shoppingResults.filter(item => {
-      if (seenUrls.has(item.link)) return false;
-      seenUrls.add(item.link);
-      return true;
-    });
+    // [4´Ü°è] ¼îÇÎ¸ô °Ë»ö
+    console.log(`\n[4´Ü°è] ¼îÇÎ¸ô °Ë»ö Áß...`);
+    const shoppingResults = await searchAllShoppingMalls(keywords.original, keywords.korean);
 
-    // ê°€ê²© ìžˆëŠ” ê²ƒ ìš°ì„ , ê°€ê²© ì˜¤ë¦„ì°¨ìˆœ ì •ë ¬
-    uniqueResults.sort((a, b) => {
-      if (a.price > 0 && b.price === 0) return -1;
-      if (a.price === 0 && b.price > 0) return 1;
-      return a.price - b.price;
-    });
-
-    console.log(`âœ… ìµœì¢… ì‘ë‹µ: ${uniqueResults.length}ê°œ ìƒí’ˆ (ìµœì €ê°€: ${uniqueResults[0]?.price || 0}ì›)`);
+    // [5´Ü°è] ÀÀ´ä
+    const processingTime = Date.now() - startTime;
+    console.log(`\n°Ë»ö ¿Ï·á! ${shoppingResults.length}°³ »óÇ°`);
+    if (shoppingResults.length > 0) {
+      console.log(`ÃÖÀú°¡: ${shoppingResults[0].price.toLocaleString()}¿ø (${shoppingResults[0].source})`);
+    }
+    console.log(`Ã³¸® ½Ã°£: ${processingTime}ms`);
+    console.log(`${'='.repeat(50)}\n`);
 
     res.json({
-      message: "ê²€ìƒ‰ ì„±ê³µ",
-      count: uniqueResults.length,
+      success: true,
+      message: shoppingResults.length > 0 
+        ? `"${keywords.original}" °Ë»ö °á°ú ${shoppingResults.length}°³ »óÇ°À» Ã£¾Ò½À´Ï´Ù.`
+        : "ÇØ´ç »óÇ°ÀÇ ÆÇ¸ÅÃ³¸¦ Ã£Áö ¸øÇß½À´Ï´Ù.",
       searchImage: targetUrl,
-      searchKeyword: searchKeyword,
-      detectedEntities: topEntities,
-      results: uniqueResults
+      searchKeyword: keywords.original,
+      searchKeywordKorean: keywords.korean,
+      detectedBrand: detectedBrand,
+      detectedLabels: labels.slice(0, 5),
+      detectedEntities: topEntities.map(e => e.description),
+      count: shoppingResults.length,
+      results: shoppingResults.slice(0, 30),
+      lowestPrice: shoppingResults[0] || null,
+      processingTime: `${processingTime}ms`,
     });
 
   } catch (error) {
-    console.error("Search Error:", error);
+    console.error(`°Ë»ö ¿À·ù:`, error);
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: "ì„œë²„ ì˜¤ë¥˜: " + error.message });
+    res.status(500).json({ 
+      success: false,
+      error: "¼­¹ö ¿À·ù: " + error.message,
+      processingTime: `${Date.now() - startTime}ms`,
+    });
+  }
+};
+
+// Å°¿öµå °Ë»ö API
+exports.searchByKeyword = async (req, res) => {
+  try {
+    const { keyword } = req.body;
+    if (!keyword) return res.status(400).json({ error: "°Ë»ö Å°¿öµå°¡ ÇÊ¿äÇÕ´Ï´Ù." });
+    
+    console.log(`Å°¿öµå °Ë»ö: "${keyword}"`);
+    const results = await searchAllShoppingMalls(keyword, translateToKorean(keyword));
+    
+    res.json({
+      success: true,
+      searchKeyword: keyword,
+      count: results.length,
+      results: results.slice(0, 30),
+      lowestPrice: results[0] || null,
+    });
+  } catch (error) {
+    console.error("Å°¿öµå °Ë»ö ¿À·ù:", error);
+    res.status(500).json({ error: "¼­¹ö ¿À·ù: " + error.message });
   }
 };
