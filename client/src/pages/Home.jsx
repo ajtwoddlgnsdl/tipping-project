@@ -160,19 +160,10 @@ export default function Home() {
                             // 이미지가 선택되었을 때 미리보기
                             <div className="relative w-full h-full p-2">
                                 <img src={preview} alt="Preview" className="object-contain w-full h-full rounded-lg" />
-                                <div className="absolute inset-0 flex items-center justify-center gap-3 bg-black bg-opacity-0 hover:bg-opacity-40 transition-all">
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); setShowEditor(true); }}
-                                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-0 hover:bg-blue-700 transition-opacity group-hover:opacity-100"
-                                        style={{ opacity: 0 }}
-                                        onMouseEnter={(e) => e.target.style.opacity = 1}
-                                        onMouseLeave={(e) => e.target.parentElement.matches(':hover') || (e.target.style.opacity = 0)}
-                                    >
-                                        ✏️ 편집하기
-                                    </button>
-                                    <span className="px-3 py-1 text-xs text-white bg-black rounded-full bg-opacity-60">이미지 변경</span>
+                                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 transition-all">
+                                    <span className="px-3 py-1 text-xs text-white bg-black rounded-full bg-opacity-60 opacity-0 hover:opacity-100 transition-opacity">클릭하여 이미지 변경</span>
                                 </div>
-                                {/* 편집 버튼 (항상 보임) */}
+                                {/* 편집 버튼 (오른쪽 상단, 항상 보임) */}
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setShowEditor(true); }}
                                     className="absolute flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md top-4 right-4 hover:bg-gray-100"
