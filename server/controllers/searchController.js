@@ -395,7 +395,7 @@ const searchWithGoogleLens = async (imageUrl) => {
     const SERP_API_KEY = process.env.SERP_API_KEY;
     if (!SERP_API_KEY) {
       console.log('[SerpAPI] API 키 없음, 스킵');
-      return { productName: null, brand: null, relatedSearches: [], shoppingResults: [] };
+      return { productName: null, brand: null, relatedSearches: [], shoppingResults: [], visualMatches: [], extractedKeywords: [] };
     }
 
     console.log('[SerpAPI] Google Lens 검색 중...');
@@ -415,23 +415,35 @@ const searchWithGoogleLens = async (imageUrl) => {
     let brand = null;
     const relatedSearches = [];
     const shoppingResults = [];
-    const visualMatches = []; // 유사 이미지 (가격 유무 관계없이)
+    const visualMatches = [];
+    const extractedKeywords = []; // 유사 이미지에서 추출한 키워드
 
-    // 1. Visual Matches에서 제품 정보 추출
+    // 1. Visual Matches에서 제품 정보 추출 (상위 20개)
     if (data.visual_matches && data.visual_matches.length > 0) {
-      for (const match of data.visual_matches.slice(0, 15)) {
+      // 신뢰도 높은 상위 결과에서 키워드 추출
+      const topMatches = data.visual_matches.slice(0, 20);
+      
+      for (const match of topMatches) {
         if (match.title) {
           relatedSearches.push(match.title);
+          
+          // 유사 이미지 제목에서 키워드 추출
+          const titleKeywords = extractKeywordsFromTitle(match.title);
+          titleKeywords.forEach(kw => {
+            if (!extractedKeywords.includes(kw)) {
+              extractedKeywords.push(kw);
+            }
+          });
+          
           // 브랜드 감지
           for (const b of BRAND_DATABASE) {
             if (match.title.toLowerCase().includes(b.toLowerCase())) {
-              brand = b;
-              break;
+              brand = brand || b;
             }
           }
         }
         
-        // 유사 이미지 모두 저장 (가격 유무 관계없이)
+        // 유사 이미지 모두 저장
         if (match.link || match.thumbnail) {
           const priceValue = match.price 
             ? parseInt(String(match.price.extracted_value || match.price.value || '0').replace(/[^0-9]/g, '')) || 0
@@ -447,7 +459,6 @@ const searchWithGoogleLens = async (imageUrl) => {
             type: 'visual_match',
           });
           
-          // 가격 있는 건 쇼핑 결과에도 추가
           if (priceValue > 0 && match.link) {
             shoppingResults.push({
               name: match.title || '',
@@ -473,21 +484,68 @@ const searchWithGoogleLens = async (imageUrl) => {
 
     // 3. 텍스트 결과에서 추가 정보
     if (data.text_results && data.text_results.length > 0) {
-      data.text_results.slice(0, 3).forEach(t => {
-        if (t.text) relatedSearches.push(t.text);
+      data.text_results.slice(0, 5).forEach(t => {
+        if (t.text) {
+          relatedSearches.push(t.text);
+          const textKeywords = extractKeywordsFromTitle(t.text);
+          textKeywords.forEach(kw => {
+            if (!extractedKeywords.includes(kw)) extractedKeywords.push(kw);
+          });
+        }
       });
     }
 
-    console.log(`[SerpAPI] 제품: ${productName || '미확인'}, 브랜드: ${brand || '미확인'}, 유사이미지: ${visualMatches.length}개, 관련검색: ${relatedSearches.length}개`);
+    console.log(`[SerpAPI] 제품: ${productName || '미확인'}, 브랜드: ${brand || '미확인'}`);
+    console.log(`[SerpAPI] 유사이미지: ${visualMatches.length}개, 추출키워드: ${extractedKeywords.slice(0, 5).join(', ')}`);
     
     return {
       productName,
       brand,
-      relatedSearches: [...new Set(relatedSearches)].slice(0, 10),
-      shoppingResults: shoppingResults.slice(0, 15),
-      visualMatches: visualMatches.slice(0, 20), // 유사 이미지 최대 20개
+      relatedSearches: [...new Set(relatedSearches)].slice(0, 15),
+      shoppingResults: shoppingResults.slice(0, 20),
+      visualMatches: visualMatches.slice(0, 30),
+      extractedKeywords: extractedKeywords.slice(0, 10), // 유사 이미지에서 추출한 키워드
     };
   } catch (error) {
+    console.error('[SerpAPI] 에러:', error.message);
+    return { productName: null, brand: null, relatedSearches: [], shoppingResults: [], visualMatches: [], extractedKeywords: [] };
+  }
+};
+
+// 제목에서 의미있는 키워드 추출
+const extractKeywordsFromTitle = (title) => {
+  if (!title) return [];
+  
+  const keywords = [];
+  
+  // 불필요한 부분 제거
+  let cleaned = title
+    .replace(/사이즈\s*\.{3,}|사이즈\s*선택.*/gi, '')
+    .replace(/신세계백화점|롯데백화점|현대백화점|SSG|11번가|쿠팡|G마켓|옥션/gi, '')
+    .replace(/무료배송|당일배송|특가|할인|세일|\d+%/gi, '')
+    .replace(/\[.*?\]|\(.*?\)/g, '') // 대괄호, 소괄호 내용 제거
+    .replace(/[-_:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // 전체 제목이 유효하면 추가
+  if (cleaned.length > 3 && cleaned.length < 50) {
+    keywords.push(cleaned);
+  }
+  
+  // 한글 키워드 추출 (브랜드+제품명 패턴)
+  const koreanMatch = cleaned.match(/[가-힣]+\s*[가-힣\s]+/g);
+  if (koreanMatch) {
+    koreanMatch.forEach(k => {
+      const trimmed = k.trim();
+      if (trimmed.length > 2 && trimmed.length < 30 && !keywords.includes(trimmed)) {
+        keywords.push(trimmed);
+      }
+    });
+  }
+  
+  return keywords;
+};
     console.error('[SerpAPI] 에러:', error.message);
     return { productName: null, brand: null, relatedSearches: [], shoppingResults: [], visualMatches: [] };
   }
@@ -1066,71 +1124,73 @@ exports.searchImage = async (req, res) => {
     }
     if (detectedBrand) console.log(`감지된 브랜드: ${detectedBrand}`);
 
-    // [3단계] 다중 검색 키워드 생성 (SerpAPI 결과 우선!)
+    // [3단계] 다중 검색 키워드 생성 (SerpAPI + Vision API 조합!)
     console.log(`\n[3단계] 다중 검색 키워드 생성 중...`);
+    
+    // SerpAPI 유사 이미지에서 추출한 키워드 (가장 신뢰도 높음)
+    const serpExtractedKeywords = serpData.extractedKeywords || [];
+    console.log(`SerpAPI 유사이미지 키워드 (${serpExtractedKeywords.length}개): ${serpExtractedKeywords.slice(0,5).join(', ')}`);
     
     // SerpAPI에서 좋은 키워드 먼저 추출 (한글 키워드 우선)
     const serpKeywords = extractGoodKeywordsFromSerp(serpData.relatedSearches);
-    console.log(`SerpAPI 추출 키워드 (${serpKeywords.length}개): ${serpKeywords.join(', ')}`);
+    console.log(`SerpAPI 관련검색 키워드 (${serpKeywords.length}개): ${serpKeywords.join(', ')}`);
     
     // Vision API 기반 키워드 생성 (보조)
     const multiKeywords = generateMultipleSearchKeywords(bestGuess, topEntities, detectedBrand, labels, allLogos);
     
-    // SerpAPI 키워드를 맨 앞에 배치 (우선순위 최고)
-    const prioritizedKeywords = [];
+    // 키워드 조합 생성 (다양한 검색어 만들기)
+    const allKeywords = new Set();
     
-    // 1순위: SerpAPI 관련검색 (한글 우선)
-    serpKeywords.forEach(kw => {
-      if (!prioritizedKeywords.includes(kw)) {
-        prioritizedKeywords.push(kw);
-      }
-    });
+    // 1순위: SerpAPI 유사이미지에서 추출한 키워드 (가장 정확!)
+    serpExtractedKeywords.forEach(kw => allKeywords.add(kw));
     
     // 2순위: SerpAPI 제품명
     if (serpData.productName) {
       const cleanedProductName = cleanSearchQuery(serpData.productName);
-      if (cleanedProductName.length > 3 && !prioritizedKeywords.includes(cleanedProductName)) {
-        prioritizedKeywords.unshift(cleanedProductName); // 맨 앞에!
+      if (cleanedProductName.length > 3) {
+        allKeywords.add(cleanedProductName);
       }
     }
     
-    // 3순위: 브랜드 + 제품유형 조합
+    // 3순위: SerpAPI 관련검색 키워드
+    serpKeywords.forEach(kw => allKeywords.add(kw));
+    
+    // 4순위: 브랜드 + 제품유형 조합
     if (detectedBrand) {
       const productType = detectProductType([...labels, ...topEntities.map(e => e.description)]);
       if (productType) {
-        const brandCombo = `${detectedBrand} ${productType}`;
-        if (!prioritizedKeywords.includes(brandCombo)) {
-          prioritizedKeywords.push(brandCombo);
-        }
+        allKeywords.add(`${detectedBrand} ${productType}`);
       }
-    }
-    
-    // 4순위: Vision API 키워드 (영어 라벨은 한국 쇼핑몰에서 효과 낮음)
-    multiKeywords.keywords.forEach(kw => {
-      // 너무 일반적인 영어 단어 필터링
-      const genericWords = ['girl', 'boy', 'woman', 'man', 'person', 'trousers', 'clothing', 'standing', 'fashion', 'sleeve', 'collar'];
-      const isGeneric = genericWords.some(g => kw.toLowerCase().includes(g));
-      if (!isGeneric && !prioritizedKeywords.includes(kw)) {
-        prioritizedKeywords.push(kw);
-      }
-    });
-    
-    // OCR에서 추출한 텍스트로 추가 키워드 생성
-    const ocrWords = textData.words || [];
-    if (ocrWords.length > 0 && detectedBrand) {
-      // 모델명처럼 보이는 텍스트 찾기 (숫자+문자 조합)
-      const modelNumbers = ocrWords.filter(w => /[A-Za-z]+.*\d+|\d+.*[A-Za-z]+/.test(w));
-      modelNumbers.forEach(model => {
-        const keyword = `${detectedBrand} ${model}`;
-        if (!prioritizedKeywords.includes(keyword)) {
-          prioritizedKeywords.push(keyword);
+      // 브랜드 + SerpAPI 키워드 조합도 추가
+      serpExtractedKeywords.slice(0, 3).forEach(kw => {
+        if (!kw.toLowerCase().includes(detectedBrand.toLowerCase())) {
+          allKeywords.add(`${detectedBrand} ${kw}`);
         }
       });
     }
     
-    // 최종 키워드 목록 (최대 12개)
-    multiKeywords.keywords = prioritizedKeywords.slice(0, 12);
-    multiKeywords.primary = multiKeywords.keywords[0] || multiKeywords.primary;
+    // 5순위: Vision API 키워드 (일반적인 단어 제외)
+    const genericWords = ['girl', 'boy', 'woman', 'man', 'person', 'trousers', 'clothing', 'standing', 'fashion', 'sleeve', 'collar', 'outerwear', 'dress'];
+    multiKeywords.keywords.forEach(kw => {
+      const isGeneric = genericWords.some(g => kw.toLowerCase().includes(g));
+      if (!isGeneric && kw.length > 2) {
+        allKeywords.add(kw);
+      }
+    });
+    
+    // 6순위: OCR 모델명 + 브랜드 조합
+    const ocrWords = textData.words || [];
+    if (ocrWords.length > 0 && detectedBrand) {
+      const modelNumbers = ocrWords.filter(w => /[A-Za-z]+.*\d+|\d+.*[A-Za-z]+/.test(w));
+      modelNumbers.forEach(model => {
+        allKeywords.add(`${detectedBrand} ${model}`);
+      });
+    }
+    
+    // 최종 키워드 목록 (최대 15개)
+    const prioritizedKeywords = [...allKeywords].slice(0, 15);
+    multiKeywords.keywords = prioritizedKeywords;
+    multiKeywords.primary = prioritizedKeywords[0] || multiKeywords.primary;
     
     console.log(`최종 검색 키워드 (${multiKeywords.keywords.length}개): ${multiKeywords.keywords.join(', ')}`);
     
@@ -1152,14 +1212,14 @@ exports.searchImage = async (req, res) => {
       });
     }
 
-    // [4단계] 쇼핑몰 검색 (다중 키워드 사용 + SerpAPI 결과 포함)
+    // [4단계] 쇼핑몰 검색 (다중 키워드 + SerpAPI 결과 통합)
     console.log(`\n[4단계] 쇼핑몰 검색 중... (${multiKeywords.keywords.length}개 키워드)`);
     
-    // 검색에 사용할 키워드 선정 (상위 5개)
-    const searchKeywords = multiKeywords.keywords.slice(0, 5);
+    // 검색에 사용할 키워드 선정 (상위 7개 - 더 많은 조합)
+    const searchKeywords = multiKeywords.keywords.slice(0, 7);
     
-    // 병렬 검색: 기존 쇼핑몰 + Google Shopping (상위 3개 키워드 각각 검색)
-    const googleShoppingPromises = searchKeywords.slice(0, 3).map(kw => searchGoogleShopping(kw));
+    // 병렬 검색: 쇼핑몰 + Google Shopping (상위 5개 키워드 각각 검색)
+    const googleShoppingPromises = searchKeywords.slice(0, 5).map(kw => searchGoogleShopping(kw));
     
     const [mallResults, ...googleResultsArray] = await Promise.all([
       searchAllShoppingMalls(searchKeywords, multiKeywords.koreanKeywords),
@@ -1168,23 +1228,26 @@ exports.searchImage = async (req, res) => {
     
     // Google Shopping 결과 합치기
     const googleResults = googleResultsArray.flat();
-    console.log(`Google Shopping 결과: ${googleResults.length}개 (${searchKeywords.slice(0,3).join(', ')})`);
+    console.log(`Google Shopping 결과: ${googleResults.length}개 (${searchKeywords.slice(0,5).length}개 키워드)`);
     
-    // SerpAPI에서 찾은 쇼핑 결과도 추가
-    let allResults = [...mallResults, ...googleResults, ...serpData.shoppingResults];
-    console.log(`SerpAPI 직접 결과: ${serpData.shoppingResults.length}개`);
+    // SerpAPI에서 찾은 쇼핑 결과 (유사이미지에서 가격 있는 것들)
+    const serpShoppingResults = serpData.shoppingResults || [];
+    console.log(`SerpAPI 쇼핑 결과: ${serpShoppingResults.length}개`);
     
-    // 중복 제거 (URL 기반)
+    // 전체 결과 통합 (쇼핑몰 + Google Shopping + SerpAPI 쇼핑)
+    let allResults = [...mallResults, ...googleResults, ...serpShoppingResults];
+    console.log(`통합 전 총 결과: ${allResults.length}개`);
+    
+    // 중복 제거 (URL + 제목 기반)
     const seenUrls = new Set();
     const seenTitles = new Set();
     allResults = allResults.filter(item => {
       if (!item || !item.link) return false;
       const normalizedUrl = item.link.split('?')[0].toLowerCase();
-      const normalizedTitle = item.name?.toLowerCase().replace(/\s+/g, '').slice(0, 30);
+      const normalizedTitle = (item.name || item.title || '').toLowerCase().replace(/\s+/g, '').slice(0, 25);
       
       if (seenUrls.has(normalizedUrl)) return false;
-      // 제목이 너무 비슷한 것도 중복 처리
-      if (normalizedTitle && seenTitles.has(normalizedTitle)) return false;
+      if (normalizedTitle && normalizedTitle.length > 5 && seenTitles.has(normalizedTitle)) return false;
       
       seenUrls.add(normalizedUrl);
       if (normalizedTitle) seenTitles.add(normalizedTitle);
@@ -1199,9 +1262,12 @@ exports.searchImage = async (req, res) => {
       return a.price - b.price;
     });
 
+    // SerpAPI 유사 이미지 (가격 없는 것 포함, 별도 섹션용)
+    const visualMatches = serpData.visualMatches || [];
+    
     // [5단계] 응답
     const processingTime = Date.now() - startTime;
-    console.log(`\n검색 완료! ${allResults.length}개 상품`);
+    console.log(`\n검색 완료! 쇼핑 ${allResults.length}개 + 유사이미지 ${visualMatches.length}개`);
     if (allResults.length > 0) {
       console.log(`최저가: ${allResults[0].price.toLocaleString()}원 (${allResults[0].source})`);
     }
@@ -1211,19 +1277,22 @@ exports.searchImage = async (req, res) => {
     res.json({
       success: true,
       message: allResults.length > 0 
-        ? `${multiKeywords.keywords.length}개 키워드로 검색하여 ${allResults.length}개 상품을 찾았습니다.`
-        : "해당 상품의 판매처를 찾지 못했습니다.",
+        ? `${searchKeywords.length}개 키워드로 검색하여 ${allResults.length}개 상품을 찾았습니다.`
+        : (visualMatches.length > 0 
+          ? `가격 정보는 없지만 ${visualMatches.length}개의 유사 상품을 찾았습니다.`
+          : "해당 상품의 판매처를 찾지 못했습니다."),
       searchImage: targetUrl,
       searchKeyword: multiKeywords.primary,
-      searchKeywords: multiKeywords.keywords,
+      searchKeywords: searchKeywords,
       searchKeywordsKorean: multiKeywords.koreanKeywords,
       detectedBrand: detectedBrand,
       detectedLabels: labels.slice(0, 5),
       detectedEntities: topEntities.map(e => e.description),
       serpProductName: serpData.productName,
+      serpExtractedKeywords: serpData.extractedKeywords || [], // 유사이미지에서 추출한 키워드
       count: allResults.length,
-      results: allResults.slice(0, 50),
-      visualMatches: serpData.visualMatches || [], // 유사 이미지 (가격 없는 것 포함)
+      results: allResults.slice(0, 60), // 60개로 증가
+      visualMatches: visualMatches, // 유사 이미지 (가격 없는 것 포함)
       lowestPrice: allResults[0] || null,
       processingTime: `${processingTime}ms`,
     });

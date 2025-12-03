@@ -86,6 +86,9 @@ export default function Home() {
                 productName: response.data.serpProductName,
                 brand: response.data.detectedBrand,
                 keywords: response.data.searchKeywords,
+                extractedKeywords: response.data.serpExtractedKeywords || [],
+                totalCount: response.data.count,
+                visualCount: (response.data.visualMatches || []).length,
             });
 
         } catch (error) {
@@ -216,17 +219,28 @@ export default function Home() {
                 )}
 
                 {/* 검색 정보 표시 */}
-                {!loading && searchInfo && (searchInfo.productName || searchInfo.brand) && (
-                    <div className="p-4 mb-6 bg-blue-50 rounded-xl">
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-blue-800">
-                            <span className="font-medium">🔍 AI 분석 결과:</span>
+                {!loading && searchInfo && (searchInfo.productName || searchInfo.brand || searchInfo.keywords?.length > 0) && (
+                    <div className="p-4 mb-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl">
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-bold text-gray-700">🔍 AI 분석 결과</span>
                             {searchInfo.productName && (
-                                <span className="px-2 py-1 bg-blue-100 rounded-lg">{searchInfo.productName}</span>
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-lg font-medium">{searchInfo.productName}</span>
                             )}
                             {searchInfo.brand && (
                                 <span className="px-2 py-1 bg-green-100 text-green-800 rounded-lg">브랜드: {searchInfo.brand}</span>
                             )}
                         </div>
+                        {searchInfo.keywords?.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                                <span className="text-xs text-gray-500">검색 키워드:</span>
+                                {searchInfo.keywords.slice(0, 5).map((kw, i) => (
+                                    <span key={i} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">{kw}</span>
+                                ))}
+                                {searchInfo.keywords.length > 5 && (
+                                    <span className="text-xs text-gray-400">+{searchInfo.keywords.length - 5}개</span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
