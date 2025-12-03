@@ -6,12 +6,24 @@ const cheerio = require('cheerio');
 const FormData = require('form-data');
 
 // Google Cloud Vision 클라이언트 초기화
-// 방법 1: 환경변수 GOOGLE_APPLICATION_CREDENTIALS에 JSON 키 파일 경로 설정
-// 방법 2: 아래처럼 직접 credentials 전달
-const visionClient = new vision.ImageAnnotatorClient({
-  keyFilename: process.env.GOOGLE_CLOUD_KEY_PATH, // JSON 키 파일 경로
-  // 또는 credentials: JSON.parse(process.env.GOOGLE_CLOUD_CREDENTIALS)
-});
+// 환경변수에서 JSON 인증 정보 읽기 (Render 배포용)
+let visionClient;
+
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  // 배포 환경: 환경변수에서 JSON 직접 파싱
+  const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  visionClient = new vision.ImageAnnotatorClient({ credentials });
+  console.log("Vision API: 환경변수 인증 사용");
+} else if (process.env.GOOGLE_CLOUD_KEY_PATH) {
+  // 로컬 환경: 파일 경로 사용
+  visionClient = new vision.ImageAnnotatorClient({
+    keyFilename: process.env.GOOGLE_CLOUD_KEY_PATH,
+  });
+  console.log("Vision API: 파일 경로 인증 사용");
+} else {
+  console.error("Vision API: 인증 정보가 없습니다!");
+  visionClient = new vision.ImageAnnotatorClient(); // 기본값 (실패할 수 있음)
+}
 
 // 🔍 웹페이지에서 가격 정보 스크래핑
 const scrapePrice = async (url) => {
