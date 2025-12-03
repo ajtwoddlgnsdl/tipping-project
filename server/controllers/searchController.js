@@ -86,85 +86,195 @@ const translateToKorean = (text) => {
   return result;
 };
 
-// 브랜드 감지
-const detectBrand = (entities) => {
-  if (!entities || !Array.isArray(entities)) return null;
-  const entityTexts = entities.filter(e => e && e.description).map(e => e.description.toLowerCase());
-  for (const brand of BRAND_DATABASE) {
-    if (entityTexts.some(text => text.includes(brand.toLowerCase()))) return brand;
+// 브랜드 감지 (라벨, 엔티티, 텍스트에서 모두 찾기)
+const detectBrand = (entities, labels, logos) => {
+  // 1. 로고에서 브랜드 찾기 (가장 정확)
+  if (logos && logos.length > 0) {
+    for (const logo of logos) {
+      const matchedBrand = BRAND_DATABASE.find(b => 
+        logo.toLowerCase().includes(b.toLowerCase()) || 
+        b.toLowerCase().includes(logo.toLowerCase())
+      );
+      if (matchedBrand) return matchedBrand;
+    }
+    return logos[0]; // 로고가 있으면 그대로 반환
+  }
+  
+  // 2. 엔티티에서 브랜드 찾기
+  if (entities && Array.isArray(entities)) {
+    const entityTexts = entities.filter(e => e && e.description).map(e => e.description.toLowerCase());
+    for (const brand of BRAND_DATABASE) {
+      if (entityTexts.some(text => text.includes(brand.toLowerCase()))) return brand;
+    }
+  }
+  
+  // 3. 라벨에서 브랜드 찾기
+  if (labels && Array.isArray(labels)) {
+    for (const label of labels) {
+      const matchedBrand = BRAND_DATABASE.find(b => 
+        label.toLowerCase().includes(b.toLowerCase())
+      );
+      if (matchedBrand) return matchedBrand;
+    }
+  }
+  
+  return null;
+};
+
+// 제품 타입 감지 (라벨에서)
+const detectProductType = (labels) => {
+  if (!labels || labels.length === 0) return null;
+  
+  const productTypes = {
+    'sneakers': '스니커즈',
+    'running shoe': '런닝화',
+    'walking shoe': '워킹화',
+    'athletic shoe': '운동화',
+    'basketball shoe': '농구화',
+    'shoe': '신발',
+    'footwear': '신발',
+    'boot': '부츠',
+    't-shirt': '티셔츠',
+    'shirt': '셔츠',
+    'jacket': '자켓',
+    'coat': '코트',
+    'pants': '바지',
+    'jeans': '청바지',
+    'dress': '드레스',
+    'bag': '가방',
+    'backpack': '백팩',
+    'handbag': '핸드백',
+    'watch': '시계',
+    'headphones': '헤드폰',
+    'earbuds': '이어폰',
+  };
+  
+  for (const label of labels) {
+    const lowerLabel = label.toLowerCase();
+    for (const [eng, kr] of Object.entries(productTypes)) {
+      if (lowerLabel.includes(eng)) {
+        return { eng: label, kr };
+      }
+    }
   }
   return null;
 };
 
-// 다중 검색 키워드 생성 (여러 조합 생성)
+// 색상 감지
+const detectColor = (labels) => {
+  if (!labels || labels.length === 0) return null;
+  
+  const colors = {
+    'white': '화이트',
+    'black': '블랙',
+    'red': '레드',
+    'blue': '블루',
+    'green': '그린',
+    'yellow': '옐로우',
+    'pink': '핑크',
+    'purple': '퍼플',
+    'orange': '오렌지',
+    'gray': '그레이',
+    'grey': '그레이',
+    'brown': '브라운',
+    'navy': '네이비',
+    'beige': '베이지',
+  };
+  
+  for (const label of labels) {
+    const lowerLabel = label.toLowerCase();
+    for (const [eng, kr] of Object.entries(colors)) {
+      if (lowerLabel === eng || lowerLabel.includes(eng)) {
+        return { eng, kr };
+      }
+    }
+  }
+  return null;
+};
+
+// 다중 검색 키워드 생성 (개선된 버전)
 const generateMultipleSearchKeywords = (bestGuessLabel, entities, brand, labels, logos) => {
   const keywords = new Set();
   const koreanKeywords = new Set();
   
-  // 1. bestGuessLabel 기반 키워드
+  // 제품 타입과 색상 감지
+  const productType = detectProductType(labels);
+  const color = detectColor(labels);
+  
+  console.log(`[키워드 생성] 브랜드: ${brand}, 제품타입: ${productType?.eng}, 색상: ${color?.eng}`);
+  
+  // 1. 브랜드 + 제품타입 조합 (가장 중요!)
+  if (brand && productType) {
+    keywords.add(`${brand} ${productType.eng}`);
+    koreanKeywords.add(`${BRAND_KR_MAP[brand.toLowerCase()] || brand} ${productType.kr}`);
+    
+    // 색상 추가 버전
+    if (color) {
+      keywords.add(`${brand} ${color.eng} ${productType.eng}`);
+      koreanKeywords.add(`${BRAND_KR_MAP[brand.toLowerCase()] || brand} ${color.kr} ${productType.kr}`);
+    }
+  }
+  
+  // 2. 브랜드만 있을 때
+  if (brand && !productType) {
+    // 라벨에서 제품 관련 단어 찾기
+    const productLabels = labels?.filter(l => 
+      !['blue', 'white', 'black', 'red', 'green'].includes(l.toLowerCase())
+    ) || [];
+    
+    if (productLabels.length > 0) {
+      keywords.add(`${brand} ${productLabels[0]}`);
+    }
+    keywords.add(brand);
+  }
+  
+  // 3. bestGuessLabel 기반 키워드
   if (bestGuessLabel) {
     const cleaned = cleanSearchQuery(bestGuessLabel);
     if (cleaned.length > 2) {
-      keywords.add(cleaned);
-      // 브랜드 추가 버전
+      // 브랜드가 있으면 추가
       if (brand && !cleaned.toLowerCase().includes(brand.toLowerCase())) {
         keywords.add(`${brand} ${cleaned}`);
+      } else {
+        keywords.add(cleaned);
       }
     }
   }
   
-  // 2. 엔티티 기반 키워드 (높은 점수 순)
+  // 4. 엔티티 기반 키워드 (점수 임계값 낮춤: 0.4 -> 0.2)
   if (entities && entities.length > 0) {
     const topEntities = entities
-      .filter(e => e && e.description && e.score > 0.4)
+      .filter(e => e && e.description && e.score > 0.2)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
     
-    // 모델명이나 제품명처럼 보이는 엔티티 찾기
     topEntities.forEach(entity => {
       const desc = cleanSearchQuery(entity.description);
       if (desc.length > 2 && desc.split(' ').length <= 5) {
         // 브랜드만 있는 것은 제외
         if (!BRAND_DATABASE.some(b => b.toLowerCase() === desc.toLowerCase())) {
-          keywords.add(desc);
           if (brand && !desc.toLowerCase().includes(brand.toLowerCase())) {
             keywords.add(`${brand} ${desc}`);
+          } else {
+            keywords.add(desc);
           }
         }
       }
     });
-    
-    // 상위 2-3개 엔티티 조합
-    if (topEntities.length >= 2) {
-      const combo = topEntities.slice(0, 3).map(e => cleanSearchQuery(e.description)).join(' ');
-      if (combo.length > 5) keywords.add(combo);
-    }
   }
   
-  // 3. 로고(브랜드) + 라벨 조합
-  if (logos && logos.length > 0 && labels && labels.length > 0) {
-    const brandName = logos[0];
-    const productType = labels.find(l => 
-      ['shoes', 'sneakers', 'shirt', 'bag', 'headphones', 'watch', 'jacket'].some(type => 
-        l.toLowerCase().includes(type)
-      )
+  // 5. 라벨 기반 조합 (브랜드 없을 때)
+  if (!brand && labels && labels.length >= 2) {
+    // 색상 제외한 라벨들
+    const nonColorLabels = labels.filter(l => 
+      !['blue', 'white', 'black', 'red', 'green', 'yellow', 'pink', 'purple', 'orange'].includes(l.toLowerCase())
     );
-    if (productType) {
-      keywords.add(`${brandName} ${productType}`);
+    if (nonColorLabels.length >= 2) {
+      keywords.add(nonColorLabels.slice(0, 2).join(' '));
     }
   }
   
-  // 4. 브랜드 + 카테고리 라벨 조합
-  if (brand && labels && labels.length > 0) {
-    labels.slice(0, 3).forEach(label => {
-      const cleaned = cleanSearchQuery(label);
-      if (cleaned.length > 2) {
-        keywords.add(`${brand} ${cleaned}`);
-      }
-    });
-  }
-  
-  // 한글 키워드 생성
+  // 6. 한글 키워드 추가 생성
   keywords.forEach(kw => {
     const korean = translateToKorean(kw);
     if (korean !== kw.toLowerCase() && korean.length > 2) {
@@ -172,9 +282,21 @@ const generateMultipleSearchKeywords = (bestGuessLabel, entities, brand, labels,
     }
   });
   
-  // 최대 6개 키워드 반환 (중복 제거)
-  const uniqueKeywords = [...keywords].filter(k => k && k.length > 2).slice(0, 6);
-  const uniqueKoreanKeywords = [...koreanKeywords].filter(k => k && k.length > 2).slice(0, 4);
+  // 브랜드 한글 버전 추가
+  if (brand) {
+    const brandKr = BRAND_KR_MAP[brand.toLowerCase()];
+    if (brandKr) {
+      if (productType) {
+        koreanKeywords.add(`${brandKr} ${productType.kr}`);
+      } else {
+        koreanKeywords.add(brandKr);
+      }
+    }
+  }
+  
+  // 최대 8개 키워드 반환 (중복 제거)
+  const uniqueKeywords = [...keywords].filter(k => k && k.length > 2).slice(0, 8);
+  const uniqueKoreanKeywords = [...koreanKeywords].filter(k => k && k.length > 2).slice(0, 6);
   
   console.log(`생성된 검색 키워드 (${uniqueKeywords.length}개):`, uniqueKeywords);
   if (uniqueKoreanKeywords.length > 0) {
@@ -236,6 +358,33 @@ const detectLogos = async (imageUrl) => {
     const [result] = await visionClient.logoDetection(imageUrl);
     return (result.logoAnnotations || []).filter(l => l.score > 0.5).map(l => l.description);
   } catch (error) { return []; }
+};
+
+// Vision API - 텍스트 감지 (OCR) - 이미지에서 브랜드명 직접 읽기
+const detectText = async (imageUrl) => {
+  try {
+    const [result] = await visionClient.textDetection(imageUrl);
+    const textAnnotations = result.textAnnotations || [];
+    if (textAnnotations.length === 0) return [];
+    
+    // 전체 텍스트에서 브랜드 찾기
+    const fullText = textAnnotations[0]?.description || '';
+    const foundBrands = [];
+    
+    for (const brand of BRAND_DATABASE) {
+      if (fullText.toLowerCase().includes(brand.toLowerCase())) {
+        foundBrands.push(brand);
+      }
+    }
+    
+    // 개별 단어들도 반환 (모델명 등)
+    const words = textAnnotations.slice(1).map(t => t.description).filter(w => w.length > 2 && w.length < 30);
+    
+    return { brands: foundBrands, words: words.slice(0, 10), fullText: fullText.substring(0, 200) };
+  } catch (error) { 
+    console.error("텍스트 감지 에러:", error.message);
+    return { brands: [], words: [], fullText: '' }; 
+  }
 };
 
 // 네이버 쇼핑 API 검색 (공식 API 사용 - 가장 안정적)
@@ -693,30 +842,48 @@ exports.searchImage = async (req, res) => {
       return res.status(400).json({ error: "이미지가 필요합니다." });
     }
 
-    // [2단계] Vision API 분석
+    // [2단계] Vision API 분석 (병렬 처리 - 텍스트 감지 추가)
     console.log(`\n[2단계] Vision API 분석 중...`);
-    const [webData, labels, logos] = await Promise.all([
+    const [webData, labels, logos, textData] = await Promise.all([
       detectWebEntities(targetUrl),
       detectLabels(targetUrl),
       detectLogos(targetUrl),
+      detectText(targetUrl), // OCR 추가
     ]);
 
     const entities = webData.entities || [];
     const bestGuessLabels = webData.bestGuessLabels || [];
     const bestGuess = bestGuessLabels[0]?.label || "";
     
-    const topEntities = entities.filter(e => e && e.description && e.score > 0.3).slice(0, 10);
+    const topEntities = entities.filter(e => e && e.description && e.score > 0.2).slice(0, 10);
     console.log(`베스트 추측: "${bestGuess}"`);
-    console.log(`상위 엔티티: ${topEntities.map(e => e.description).join(', ')}`);
-    if (labels.length > 0) console.log(`라벨: ${labels.slice(0, 5).join(', ')}`);
+    console.log(`상위 엔티티: ${topEntities.map(e => `${e.description}(${(e.score*100).toFixed(0)}%)`).join(', ')}`);
+    if (labels.length > 0) console.log(`라벨: ${labels.slice(0, 8).join(', ')}`);
     if (logos.length > 0) console.log(`로고: ${logos.join(', ')}`);
+    if (textData.brands.length > 0) console.log(`OCR 브랜드: ${textData.brands.join(', ')}`);
+    if (textData.words.length > 0) console.log(`OCR 텍스트: ${textData.words.slice(0, 5).join(', ')}`);
     
-    const detectedBrand = logos[0] || detectBrand(topEntities);
+    // OCR에서 찾은 브랜드를 로고 목록에 추가
+    const allLogos = [...logos, ...textData.brands];
+    
+    // 브랜드 감지 (로고, 엔티티, 라벨, OCR 모두 활용)
+    const detectedBrand = detectBrand(topEntities, labels, allLogos);
     if (detectedBrand) console.log(`감지된 브랜드: ${detectedBrand}`);
 
     // [3단계] 다중 검색 키워드 생성 (개선됨)
     console.log(`\n[3단계] 다중 검색 키워드 생성 중...`);
-    const multiKeywords = generateMultipleSearchKeywords(bestGuess, topEntities, detectedBrand, labels, logos);
+    const multiKeywords = generateMultipleSearchKeywords(bestGuess, topEntities, detectedBrand, labels, allLogos);
+    
+    // OCR에서 추출한 텍스트로 추가 키워드 생성
+    if (textData.words.length > 0 && detectedBrand) {
+      // 모델명처럼 보이는 텍스트 찾기 (숫자+문자 조합)
+      const modelNumbers = textData.words.filter(w => /[A-Za-z]+.*\d+|\d+.*[A-Za-z]+/.test(w));
+      modelNumbers.forEach(model => {
+        if (!multiKeywords.keywords.includes(`${detectedBrand} ${model}`)) {
+          multiKeywords.keywords.push(`${detectedBrand} ${model}`);
+        }
+      });
+    }
     
     if (multiKeywords.keywords.length === 0) {
       console.log(`상품 인식 실패`);
@@ -729,6 +896,7 @@ exports.searchImage = async (req, res) => {
         detectedBrand: null,
         detectedLabels: labels.slice(0, 5),
         detectedEntities: topEntities.map(e => e.description),
+        ocrText: textData.words.slice(0, 5),
         count: 0,
         results: [],
         processingTime: `${Date.now() - startTime}ms`,
