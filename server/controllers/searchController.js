@@ -241,7 +241,7 @@ const searchNaverShopping = async (keyword) => {
     console.log(`🔎 네이버 쇼핑 검색: ${keyword}`);
     
     // 네이버 쇼핑 검색 페이지 스크래핑
-    const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}`;
+    const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}&sort=price_asc`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
       headers: {
@@ -272,7 +272,7 @@ const searchNaverShopping = async (keyword) => {
           thumbnail: thumbnail,
           link: link.startsWith('http') ? link : `https://search.shopping.naver.com${link}`,
           source: '네이버쇼핑',
-          type: 'naver_shopping'
+          type: 'shopping'
         });
       }
     });
@@ -283,6 +283,129 @@ const searchNaverShopping = async (keyword) => {
     console.error("네이버 쇼핑 검색 에러:", error.message);
     return [];
   }
+};
+
+// 🔎 쿠팡 검색
+const searchCoupang = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    
+    console.log(`🔎 쿠팡 검색: ${keyword}`);
+    
+    const searchUrl = `https://www.coupang.com/np/search?component=&q=${encodeURIComponent(keyword)}&channel=user&sorter=priceAsc`;
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      }
+    });
+
+    const $ = cheerio.load(response.data);
+    const results = [];
+
+    $('li.search-product').slice(0, 8).each((i, el) => {
+      const $el = $(el);
+      const title = $el.find('.name').text().trim();
+      const link = $el.find('a.search-product-link').attr('href');
+      const priceText = $el.find('.price-value').text().replace(/[^0-9]/g, '');
+      const price = parseInt(priceText) || 0;
+      const thumbnail = $el.find('img').attr('src') || $el.find('img').attr('data-img-src') || '';
+
+      if (title && link) {
+        results.push({
+          title: title,
+          price: price,
+          currency: 'KRW',
+          thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+          link: link.startsWith('http') ? link : `https://www.coupang.com${link}`,
+          source: '쿠팡',
+          type: 'shopping'
+        });
+      }
+    });
+
+    console.log(`✅ 쿠팡 결과: ${results.length}개`);
+    return results;
+  } catch (error) {
+    console.error("쿠팡 검색 에러:", error.message);
+    return [];
+  }
+};
+
+// 🔎 G마켓 검색
+const searchGmarket = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    
+    console.log(`🔎 G마켓 검색: ${keyword}`);
+    
+    const searchUrl = `https://browse.gmarket.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      }
+    });
+
+    const $ = cheerio.load(response.data);
+    const results = [];
+
+    $('[class*="box__item-container"]').slice(0, 8).each((i, el) => {
+      const $el = $(el);
+      const title = $el.find('[class*="text__item-title"]').text().trim();
+      const link = $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="text__value"]').first().text().replace(/[^0-9]/g, '');
+      const price = parseInt(priceText) || 0;
+      const thumbnail = $el.find('img').attr('src') || '';
+
+      if (title && link) {
+        results.push({
+          title: title,
+          price: price,
+          currency: 'KRW',
+          thumbnail: thumbnail,
+          link: link.startsWith('http') ? link : `https://browse.gmarket.co.kr${link}`,
+          source: 'G마켓',
+          type: 'shopping'
+        });
+      }
+    });
+
+    console.log(`✅ G마켓 결과: ${results.length}개`);
+    return results;
+  } catch (error) {
+    console.error("G마켓 검색 에러:", error.message);
+    return [];
+  }
+};
+
+// 🔎 여러 쇼핑몰 동시 검색
+const searchAllShoppingMalls = async (keyword) => {
+  if (!keyword) return [];
+  
+  console.log(`🛒 여러 쇼핑몰 동시 검색: "${keyword}"`);
+  
+  // 병렬로 검색
+  const [naverResults, coupangResults, gmarketResults] = await Promise.all([
+    searchNaverShopping(keyword),
+    searchCoupang(keyword),
+    searchGmarket(keyword),
+  ]);
+  
+  // 결과 합치기
+  const allResults = [...naverResults, ...coupangResults, ...gmarketResults];
+  
+  // 가격순 정렬
+  allResults.sort((a, b) => {
+    if (a.price > 0 && b.price === 0) return -1;
+    if (a.price === 0 && b.price > 0) return 1;
+    return a.price - b.price;
+  });
+  
+  console.log(`✅ 총 ${allResults.length}개 상품 찾음`);
+  return allResults;
 };
 
 // 3. [무료] 규칙 기반 검색어 청소기
@@ -369,58 +492,41 @@ exports.searchImage = async (req, res) => {
     }
     if (!targetUrl) return res.status(400).json({ error: "이미지 URL 필요" });
 
-    // --- [2단계] Google Cloud Vision API - 웹 감지 ---
-    console.log(`🔍 [2단계] Google Vision API로 이미지 분석 중...`);
+    // --- [2단계] Google Cloud Vision API - 상품 인식 ---
+    console.log(`🔍 [2단계] Google Vision API로 상품 인식 중...`);
     const webData = await detectWebEntities(targetUrl);
 
     // 안전하게 배열 확인
     const bestGuessLabels = webData.bestGuessLabels || [];
     const entities = webData.entities || [];
-    const pages = webData.pages || [];
 
-    // 베스트 추측 라벨에서 검색 키워드 추출
+    // 베스트 추측 라벨에서 검색 키워드 추출 (가장 중요!)
     let bestKeyword = "";
     if (bestGuessLabels.length > 0) {
       bestKeyword = bestGuessLabels[0].label || "";
     }
 
-    // 웹 엔티티에서 상품명/브랜드명 추출 (score 기준 낮춤: 0.3 이상)
+    // 웹 엔티티에서 상품명/브랜드명 추출
     const topEntities = entities
       .filter(e => e.score > 0.3)
       .slice(0, 10)
       .map(e => e.description);
 
     console.log(`🏷️ 감지된 엔티티: ${topEntities.join(', ')}`);
-    console.log(`💡 베스트 추측: ${bestKeyword}`);
+    console.log(`💡 베스트 추측 (상품명): ${bestKeyword}`);
 
-    // 검색 키워드 (단순화)
-    let searchKeyword = bestKeyword || topEntities.slice(0, 3).join(' ');
+    // 검색 키워드 결정 (베스트 추측 > 엔티티 조합)
+    let searchKeyword = bestKeyword;
+    if (!searchKeyword && topEntities.length > 0) {
+      // 엔티티 중 브랜드 + 상품 조합
+      searchKeyword = topEntities.slice(0, 3).join(' ');
+    }
 
-    // --- [3단계] 매칭 페이지들에서 상품 정보 추출 ---
-    console.log(`🌐 [3단계] 매칭 페이지 ${pages.length}개 분석 중...`);
-
-    // Vision API 결과가 전혀 없으면 네이버 쇼핑으로 대체
-    if (pages.length === 0 && entities.length === 0) {
-      if (searchKeyword) {
-        console.log(`⚠️ Vision API 결과 없음, 네이버 쇼핑으로 대체 검색...`);
-        const naverResults = await searchNaverShopping(searchKeyword);
-        
-        if (naverResults.length > 0) {
-          return res.json({
-            message: "검색 성공 (네이버 쇼핑)",
-            count: naverResults.length,
-            searchImage: targetUrl,
-            searchKeyword: searchKeyword,
-            detectedEntities: topEntities,
-            results: naverResults
-          });
-        }
-      }
-      
-      // 정말 아무것도 없으면
-      console.log(`⚠️ 검색 결과를 찾지 못했습니다.`);
+    // 키워드가 없으면 검색 불가
+    if (!searchKeyword) {
+      console.log(`⚠️ 상품을 인식하지 못했습니다.`);
       return res.json({
-        message: "검색 완료 - 일치하는 상품을 찾지 못했습니다",
+        message: "이미지에서 상품을 인식하지 못했습니다. 다른 이미지를 시도해주세요.",
         count: 0,
         searchImage: targetUrl,
         searchKeyword: "",
@@ -429,128 +535,48 @@ exports.searchImage = async (req, res) => {
       });
     }
 
-    // 쇼핑몰 URL 우선 정렬
-    const sortedPages = [...pages].sort((a, b) => {
-      const aIsShopping = isShoppingUrl(a.url) ? -1 : 1;
-      const bIsShopping = isShoppingUrl(b.url) ? -1 : 1;
-      return aIsShopping - bIsShopping;
-    });
-
-    // 상위 15개 페이지만 스크래핑 (성능상 제한)
-    const pagesToScrape = sortedPages.slice(0, 15);
-
-    // 병렬로 가격 스크래핑 (최대 5개씩)
-    const results = [];
-    const batchSize = 5;
-
-    for (let i = 0; i < pagesToScrape.length; i += batchSize) {
-      const batch = pagesToScrape.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (page) => {
-          const priceData = await scrapePrice(page.url);
-          
-          // 페이지에서 제목 추출 (pageTitle 또는 이미지 제목)
-          let title = page.pageTitle || "";
-          if (!title && page.matchingImages?.length > 0) {
-            title = page.matchingImages[0].title || "";
-          }
-          title = cleanSearchQuery(title);
-
-          // 썸네일 추출
-          let thumbnail = null;
-          if (page.matchingImages?.length > 0) {
-            thumbnail = page.matchingImages[0].url;
-          }
-          if (!thumbnail && page.fullMatchingImages?.length > 0) {
-            thumbnail = page.fullMatchingImages[0].url;
-          }
-
-          return {
-            title: title || bestKeyword || "상품명 확인 필요",
-            price: priceData.price,
-            currency: priceData.currency,
-            thumbnail: thumbnail,
-            link: page.url,
-            source: new URL(page.url).hostname.replace('www.', ''),
-            type: isShoppingUrl(page.url) ? 'shopping' : 'web_match'
-          };
-        })
-      );
-      results.push(...batchResults);
-    }
-
-    // --- [4단계] 유사 이미지 결과 추가 ---
-    const fullMatches = webData.fullMatches || [];
-    const partialMatches = webData.partialMatches || [];
-    const matches = webData.matches || [];
+    // --- [3단계] 여러 쇼핑몰에서 상품 검색 ---
+    console.log(`🛒 [3단계] "${searchKeyword}" 키워드로 쇼핑몰 검색 중...`);
     
-    const similarImages = [
-      ...fullMatches,
-      ...partialMatches,
-      ...matches
-    ].slice(0, 10);
+    const shoppingResults = await searchAllShoppingMalls(searchKeyword);
 
-    for (const img of similarImages) {
-      // 이미 결과에 있는 URL은 스킵
-      if (results.some(r => r.link === img.url)) continue;
-      
-      results.push({
-        title: bestKeyword || topEntities[0] || "유사 상품",
-        price: 0,
-        currency: 'KRW',
-        thumbnail: img.url,
-        link: img.url,
-        source: "유사 이미지",
-        type: 'visual_match'
+    // 결과가 없으면
+    if (shoppingResults.length === 0) {
+      return res.json({
+        message: "해당 상품의 판매처를 찾지 못했습니다.",
+        count: 0,
+        searchImage: targetUrl,
+        searchKeyword: searchKeyword,
+        detectedEntities: topEntities,
+        results: []
       });
     }
 
-    // --- [5단계] 필터링 및 정렬 ---
-    let finalResults = results.filter(item => item.link && item.link.trim() !== "");
-
-    // 중복 URL 제거
+    // --- [4단계] 결과 정리 및 응답 ---
+    // 중복 제거
     const seenUrls = new Set();
-    finalResults = finalResults.filter(item => {
+    const uniqueResults = shoppingResults.filter(item => {
       if (seenUrls.has(item.link)) return false;
       seenUrls.add(item.link);
       return true;
     });
 
-    // 정렬: 가격 있는 것 우선, 그 다음 가격 오름차순
-    finalResults.sort((a, b) => {
-      // 쇼핑몰 우선
-      if (a.type === 'shopping' && b.type !== 'shopping') return -1;
-      if (a.type !== 'shopping' && b.type === 'shopping') return 1;
-      // 가격 있는 것 우선
+    // 가격 있는 것 우선, 가격 오름차순 정렬
+    uniqueResults.sort((a, b) => {
       if (a.price > 0 && b.price === 0) return -1;
       if (a.price === 0 && b.price > 0) return 1;
-      // 가격 오름차순
       return a.price - b.price;
     });
 
-    // 결과가 부족하면 네이버 쇼핑으로 보완
-    if (finalResults.length < 3 && searchKeyword) {
-      console.log(`⚠️ 결과 부족 (${finalResults.length}개), 네이버 쇼핑으로 보완...`);
-      const naverResults = await searchNaverShopping(searchKeyword);
-      
-      // 중복 제거하며 추가
-      for (const item of naverResults) {
-        if (!seenUrls.has(item.link)) {
-          seenUrls.add(item.link);
-          finalResults.push(item);
-        }
-      }
-    }
-
-    console.log(`✅ 최종 응답: ${finalResults.length}개 상품`);
+    console.log(`✅ 최종 응답: ${uniqueResults.length}개 상품 (최저가: ${uniqueResults[0]?.price || 0}원)`);
 
     res.json({
       message: "검색 성공",
-      count: finalResults.length,
+      count: uniqueResults.length,
       searchImage: targetUrl,
-      searchKeyword: searchKeyword || bestKeyword || topEntities.join(' '),
+      searchKeyword: searchKeyword,
       detectedEntities: topEntities,
-      results: finalResults
+      results: uniqueResults
     });
 
   } catch (error) {
