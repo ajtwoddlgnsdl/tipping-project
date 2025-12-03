@@ -66,43 +66,64 @@ export default function Login() {
   }, []);
 
   // [추가] 카카오 로그인 버튼 클릭 시 실행
-  const handleKakaoLogin = () => {
+  const handleKakaoLogin = async () => {
     // 카카오 SDK 초기화 확인
     if (!window.Kakao) {
       toast.error("카카오 SDK가 로드되지 않았습니다.");
+      console.error("window.Kakao가 없습니다.");
       return;
     }
+    
+    console.log("카카오 SDK 상태:", window.Kakao.isInitialized() ? "초기화됨" : "초기화 안됨");
+    
     if (!window.Kakao.isInitialized()) {
       toast.error("카카오 SDK가 초기화되지 않았습니다. 환경변수를 확인해주세요.");
       console.error("VITE_KAKAO_JAVASCRIPT_KEY:", import.meta.env.VITE_KAKAO_JAVASCRIPT_KEY);
       return;
     }
 
-    window.Kakao.Auth.login({
-      success: async (authObj) => {
-        try {
-          // 1. 카카오가 준 토큰(access_token)을 백엔드로 보냄
-          const response = await axios.post('/auth/kakao', {
-            token: authObj.access_token
-          });
-
-          // 2. 백엔드 응답 처리 (구글과 동일)
-          const { token, user } = response.data;
-          localStorage.setItem('token', token);
-          localStorage.setItem('user', JSON.stringify(user));
-
-          toast.success(`카카오 로그인 성공! 반가워요 ${user.nickname}님`);
-          navigate('/');
-        } catch (error) {
-          console.error("카카오 로그인 서버 에러:", error.response?.data || error);
-          toast.error(error.response?.data?.error || "카카오 로그인 서버 처리 실패");
-        }
-      },
-      fail: (err) => {
-        console.error("카카오 로그인 실패:", err);
-        toast.error(`카카오 로그인 실패: ${err.error_description || err.error || '알 수 없는 오류'}`);
-      },
-    });
+    try {
+      // 카카오 SDK 2.x 새로운 방식: loginForm() 또는 authorize() 사용
+      // scope: 받아올 정보 (닉네임, 이메일 등)
+      window.Kakao.Auth.authorize({
+        redirectUri: window.location.origin + '/login', // 현재 페이지로 리다이렉트
+        scope: 'profile_nickname,account_email',
+      });
+    } catch (error) {
+      console.error("카카오 로그인 에러:", error);
+      toast.error("카카오 로그인 중 오류가 발생했습니다.");
+    }
+  };
+  
+  // 카카오 로그인 리다이렉트 후 처리 (URL에서 code 파라미터 확인)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    
+    if (code) {
+      // URL에서 code 파라미터 제거 (히스토리 정리)
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // 카카오 인가 코드로 로그인 처리
+      handleKakaoCallback(code);
+    }
+  }, []);
+  
+  const handleKakaoCallback = async (code) => {
+    try {
+      console.log("카카오 인가 코드 수신:", code);
+      const response = await axios.post('/auth/kakao', { code });
+      
+      const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      toast.success(`카카오 로그인 성공! 반가워요 ${user.nickname}님`);
+      navigate('/');
+    } catch (error) {
+      console.error("카카오 로그인 서버 에러:", error.response?.data || error);
+      toast.error(error.response?.data?.error || "카카오 로그인 서버 처리 실패");
+    }
   };
 
   return (

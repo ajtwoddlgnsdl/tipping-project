@@ -144,26 +144,57 @@ exports.googleLogin = async (req, res) => {
   }
 };
 
-// 👇 [추가] 카카오 로그인 처리
+// 👇 [추가] 카카오 로그인 처리 (인가 코드 방식)
 exports.kakaoLogin = async (req, res) => {
   try {
-    const { token } = req.body; // 프론트에서 받은 카카오 토큰
+    const { code, token } = req.body; // code: 인가코드 방식, token: 액세스토큰 방식 (하위 호환)
 
-    // 1. 카카오 서버에 유저 정보 요청
+    let accessToken = token;
+
+    // 인가 코드 방식인 경우 (code가 있으면)
+    if (code) {
+      console.log("카카오 인가 코드 수신:", code);
+      
+      // 1. 인가 코드로 액세스 토큰 발급
+      const tokenResponse = await axios.post(
+        'https://kauth.kakao.com/oauth/token',
+        null,
+        {
+          params: {
+            grant_type: 'authorization_code',
+            client_id: process.env.KAKAO_REST_API_KEY,
+            redirect_uri: process.env.KAKAO_REDIRECT_URI || 'http://localhost:5173/login',
+            code: code,
+          },
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+      
+      accessToken = tokenResponse.data.access_token;
+      console.log("카카오 액세스 토큰 발급 성공");
+    }
+
+    if (!accessToken) {
+      return res.status(400).json({ error: "토큰 또는 인가 코드가 필요합니다." });
+    }
+
+    // 2. 카카오 서버에 유저 정보 요청
     const kakaoResponse = await axios.get('https://kapi.kakao.com/v2/user/me', {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
 
-    // 2. 카카오가 준 정보 파싱
+    // 3. 카카오가 준 정보 파싱
     const snsId = String(kakaoResponse.data.id); // 숫자일 수 있어서 문자로 변환
-    const { nickname } = kakaoResponse.data.properties;
-    const email = kakaoResponse.data.kakao_account.email; // 선택 동의라 없을 수도 있음
+    const nickname = kakaoResponse.data.properties?.nickname || '카카오유저';
+    const email = kakaoResponse.data.kakao_account?.email; // 선택 동의라 없을 수도 있음
 
-    // 3. 이메일이 없으면 가짜 이메일 생성 (카카오는 이메일이 필수 아닐 수 있음)
+    // 4. 이메일이 없으면 가짜 이메일 생성 (카카오는 이메일이 필수 아닐 수 있음)
     // 예: kakao_12345@social.com
     const userEmail = email || `kakao_${snsId}@social.com`;
 
-    // 4. DB 조회 및 가입 (구글 로직과 동일)
+    // 5. DB 조회 및 가입 (구글 로직과 동일)
     let user = await prisma.user.findUnique({ where: { email: userEmail } });
 
     if (!user) {
@@ -178,7 +209,7 @@ exports.kakaoLogin = async (req, res) => {
       });
     }
 
-    // 5. JWT 발급
+    // 6. JWT 발급
     const jwtToken = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
@@ -192,7 +223,7 @@ exports.kakaoLogin = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Kakao Login Error:", error);
+    console.error("Kakao Login Error:", error.response?.data || error);
     res.status(500).json({ error: "카카오 로그인 처리 실패" });
   }
 };
