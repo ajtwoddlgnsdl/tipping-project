@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone'; // 드래그 앤 드롭 라이브�
 import axios from '../api/axios';
 import { toast } from 'react-toastify';
 import ProductCard from '../components/ProductCard';
+import ImageEditor from '../components/ImageEditor'; // 이미지 편집 컴포넌트
 
 export default function Home() {
     const navigate = useNavigate();
@@ -15,6 +16,10 @@ export default function Home() {
     const [preview, setPreview] = useState(null); // 미리보기 이미지 URL
     const [loading, setLoading] = useState(false); // 로딩 중인가?
     const [results, setResults] = useState([]);    // 검색 결과 리스트
+    
+    // 이미지 편집 관련 상태
+    const [showEditor, setShowEditor] = useState(false);
+    const [originalPreview, setOriginalPreview] = useState(null); // 원본 이미지 URL
 
     // 1. 유저 정보 불러오기
     useEffect(() => {
@@ -27,7 +32,23 @@ export default function Home() {
         const selectedFile = acceptedFiles[0];
         setFile(selectedFile);
         // 미리보기 URL 생성
-        setPreview(URL.createObjectURL(selectedFile));
+        const previewUrl = URL.createObjectURL(selectedFile);
+        setPreview(previewUrl);
+        setOriginalPreview(previewUrl); // 원본 저장
+        setResults([]); // 기존 결과 초기화
+    };
+
+    // 이미지 편집 완료 핸들러
+    const handleEditorSave = (editedFile, editedUrl) => {
+        setFile(editedFile);
+        setPreview(editedUrl);
+        setShowEditor(false);
+        toast.success('이미지 편집이 완료되었습니다!');
+    };
+
+    // 이미지 편집 취소 핸들러
+    const handleEditorCancel = () => {
+        setShowEditor(false);
     };
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -72,6 +93,15 @@ export default function Home() {
 
     return (
         <div className="min-h-screen pb-20 bg-gray-50">
+            {/* 이미지 편집기 모달 */}
+            {showEditor && originalPreview && (
+                <ImageEditor
+                    imageUrl={originalPreview}
+                    onSave={handleEditorSave}
+                    onCancel={handleEditorCancel}
+                />
+            )}
+
             {/* 헤더 (네비게이션) */}
             <nav className="bg-white shadow-sm">
                 <div className="flex items-center justify-between px-4 py-4 mx-auto max-w-7xl">
@@ -118,9 +148,28 @@ export default function Home() {
                             // 이미지가 선택되었을 때 미리보기
                             <div className="relative w-full h-full p-2">
                                 <img src={preview} alt="Preview" className="object-contain w-full h-full rounded-lg" />
-                                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-10">
-                                    <span className="px-3 py-1 text-xs text-white bg-black rounded-full bg-opacity-60">이미지 변경하기</span>
+                                <div className="absolute inset-0 flex items-center justify-center gap-3 bg-black bg-opacity-0 hover:bg-opacity-40 transition-all">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setShowEditor(true); }}
+                                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-0 hover:bg-blue-700 transition-opacity group-hover:opacity-100"
+                                        style={{ opacity: 0 }}
+                                        onMouseEnter={(e) => e.target.style.opacity = 1}
+                                        onMouseLeave={(e) => e.target.parentElement.matches(':hover') || (e.target.style.opacity = 0)}
+                                    >
+                                        ✏️ 편집하기
+                                    </button>
+                                    <span className="px-3 py-1 text-xs text-white bg-black rounded-full bg-opacity-60">이미지 변경</span>
                                 </div>
+                                {/* 편집 버튼 (항상 보임) */}
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); setShowEditor(true); }}
+                                    className="absolute flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md top-4 right-4 hover:bg-gray-100"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    편집
+                                </button>
                             </div>
                         ) : (
                             // 이미지가 없을 때 안내 문구
