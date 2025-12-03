@@ -195,23 +195,20 @@ const exchangeToKRW = (price, currency) => {
 // 🌐 Google Cloud Vision - 웹 감지 (Web Detection)
 const detectWebEntities = async (imageUrl) => {
   try {
-    // 여러 Vision API 기능을 동시에 호출 (더 많은 정보 획득)
-    const [result] = await visionClient.annotateImage({
-      image: { source: { imageUri: imageUrl } },
-      features: [
-        { type: 'WEB_DETECTION', maxResults: 20 },
-        { type: 'LABEL_DETECTION', maxResults: 10 },
-        { type: 'LOGO_DETECTION', maxResults: 5 },
-        { type: 'PRODUCT_SEARCH', maxResults: 10 },
-      ],
-    });
+    // 원래 방식: webDetection (상품 검색에 가장 효과적)
+    const [result] = await visionClient.webDetection(imageUrl);
+    const webDetection = result.webDetection;
 
-    const webDetection = result.webDetection || {};
-    const labels = result.labelAnnotations || [];
-    const logos = result.logoAnnotations || [];
+    if (!webDetection) {
+      console.log("⚠️ webDetection 결과 없음");
+      return { entities: [], pages: [], matches: [], labels: [], logos: [] };
+    }
 
-    console.log(`📌 라벨 감지: ${labels.map(l => l.description).join(', ')}`);
-    console.log(`🏷️ 로고 감지: ${logos.map(l => l.description).join(', ')}`);
+    console.log(`📊 Vision API 결과:`);
+    console.log(`   - 웹 엔티티: ${webDetection.webEntities?.length || 0}개`);
+    console.log(`   - 매칭 페이지: ${webDetection.pagesWithMatchingImages?.length || 0}개`);
+    console.log(`   - 유사 이미지: ${webDetection.visuallySimilarImages?.length || 0}개`);
+    console.log(`   - 완전 일치: ${webDetection.fullMatchingImages?.length || 0}개`);
 
     return {
       // 웹 엔티티 (브랜드명, 상품명 등)
@@ -226,10 +223,9 @@ const detectWebEntities = async (imageUrl) => {
       partialMatches: webDetection.partialMatchingImages || [],
       // 베스트 추측 라벨 (상품명으로 활용)
       bestGuessLabels: webDetection.bestGuessLabels || [],
-      // 추가: 라벨 (의류, 신발 등 카테고리)
-      labels: labels,
-      // 추가: 로고 (브랜드명)
-      logos: logos,
+      // 빈 배열 (호환성 유지)
+      labels: [],
+      logos: [],
     };
   } catch (error) {
     console.error("Vision API Error:", error.message);
@@ -381,8 +377,6 @@ exports.searchImage = async (req, res) => {
     const bestGuessLabels = webData.bestGuessLabels || [];
     const entities = webData.entities || [];
     const pages = webData.pages || [];
-    const labels = webData.labels || [];
-    const logos = webData.logos || [];
 
     // 베스트 추측 라벨에서 검색 키워드 추출
     let bestKeyword = "";
@@ -390,62 +384,40 @@ exports.searchImage = async (req, res) => {
       bestKeyword = bestGuessLabels[0].label || "";
     }
 
-    // 로고에서 브랜드명 추출
-    const brandNames = logos.map(l => l.description);
-    
-    // 라벨에서 카테고리 추출 (의류, 신발 등)
-    const categoryLabels = labels
-      .filter(l => l.score > 0.7)
-      .map(l => l.description);
-
-    // 웹 엔티티에서 상품명/브랜드명 추출
+    // 웹 엔티티에서 상품명/브랜드명 추출 (score 기준 낮춤: 0.3 이상)
     const topEntities = entities
-      .filter(e => e.score > 0.5)
-      .slice(0, 5)
+      .filter(e => e.score > 0.3)
+      .slice(0, 10)
       .map(e => e.description);
 
     console.log(`🏷️ 감지된 엔티티: ${topEntities.join(', ')}`);
     console.log(`💡 베스트 추측: ${bestKeyword}`);
-    console.log(`👕 카테고리: ${categoryLabels.join(', ')}`);
-    console.log(`🏪 브랜드: ${brandNames.join(', ')}`);
 
-    // 검색 키워드 조합 (브랜드 + 카테고리 또는 베스트 추측)
-    let searchKeyword = bestKeyword;
-    if (!searchKeyword && brandNames.length > 0) {
-      searchKeyword = brandNames[0];
-      if (categoryLabels.length > 0) {
-        searchKeyword += ' ' + categoryLabels[0];
-      }
-    }
-    if (!searchKeyword && topEntities.length > 0) {
-      searchKeyword = topEntities.slice(0, 2).join(' ');
-    }
-    if (!searchKeyword && categoryLabels.length > 0) {
-      searchKeyword = categoryLabels.slice(0, 2).join(' ');
-    }
+    // 검색 키워드 (단순화)
+    let searchKeyword = bestKeyword || topEntities.slice(0, 3).join(' ');
 
     // --- [3단계] 매칭 페이지들에서 상품 정보 추출 ---
     console.log(`🌐 [3단계] 매칭 페이지 ${pages.length}개 분석 중...`);
 
-    // Vision API 결과가 부족하면 네이버 쇼핑 검색으로 보완
-    if (pages.length === 0 && searchKeyword) {
-      console.log(`⚠️ Vision API 결과 부족, 네이버 쇼핑으로 대체 검색...`);
-      const naverResults = await searchNaverShopping(searchKeyword);
-      
-      if (naverResults.length > 0) {
-        return res.json({
-          message: "검색 성공 (네이버 쇼핑)",
-          count: naverResults.length,
-          searchImage: targetUrl,
-          searchKeyword: searchKeyword,
-          detectedEntities: [...brandNames, ...topEntities, ...categoryLabels],
-          results: naverResults
-        });
+    // Vision API 결과가 전혀 없으면 네이버 쇼핑으로 대체
+    if (pages.length === 0 && entities.length === 0) {
+      if (searchKeyword) {
+        console.log(`⚠️ Vision API 결과 없음, 네이버 쇼핑으로 대체 검색...`);
+        const naverResults = await searchNaverShopping(searchKeyword);
+        
+        if (naverResults.length > 0) {
+          return res.json({
+            message: "검색 성공 (네이버 쇼핑)",
+            count: naverResults.length,
+            searchImage: targetUrl,
+            searchKeyword: searchKeyword,
+            detectedEntities: topEntities,
+            results: naverResults
+          });
+        }
       }
-    }
-
-    // 결과가 전혀 없으면 빈 배열 반환
-    if (pages.length === 0 && entities.length === 0 && !searchKeyword) {
+      
+      // 정말 아무것도 없으면
       console.log(`⚠️ 검색 결과를 찾지 못했습니다.`);
       return res.json({
         message: "검색 완료 - 일치하는 상품을 찾지 못했습니다",
@@ -557,7 +529,7 @@ exports.searchImage = async (req, res) => {
     });
 
     // 결과가 부족하면 네이버 쇼핑으로 보완
-    if (finalResults.length < 5 && searchKeyword) {
+    if (finalResults.length < 3 && searchKeyword) {
       console.log(`⚠️ 결과 부족 (${finalResults.length}개), 네이버 쇼핑으로 보완...`);
       const naverResults = await searchNaverShopping(searchKeyword);
       
@@ -577,7 +549,7 @@ exports.searchImage = async (req, res) => {
       count: finalResults.length,
       searchImage: targetUrl,
       searchKeyword: searchKeyword || bestKeyword || topEntities.join(' '),
-      detectedEntities: [...brandNames, ...topEntities, ...categoryLabels].filter(Boolean),
+      detectedEntities: topEntities,
       results: finalResults
     });
 
