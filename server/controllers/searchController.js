@@ -415,10 +415,11 @@ const searchWithGoogleLens = async (imageUrl) => {
     let brand = null;
     const relatedSearches = [];
     const shoppingResults = [];
+    const visualMatches = []; // 유사 이미지 (가격 유무 관계없이)
 
     // 1. Visual Matches에서 제품 정보 추출
     if (data.visual_matches && data.visual_matches.length > 0) {
-      for (const match of data.visual_matches.slice(0, 5)) {
+      for (const match of data.visual_matches.slice(0, 15)) {
         if (match.title) {
           relatedSearches.push(match.title);
           // 브랜드 감지
@@ -429,17 +430,35 @@ const searchWithGoogleLens = async (imageUrl) => {
             }
           }
         }
-        // 쇼핑 결과
-        if (match.price && match.link) {
-          shoppingResults.push({
-            title: match.title || '',
-            price: parseInt(String(match.price.extracted_value || match.price.value || '0').replace(/[^0-9]/g, '')) || 0,
-            currency: 'KRW',
-            link: match.link,
-            thumbnail: match.thumbnail || '',
-            source: match.source || 'Google',
-            type: 'shopping',
+        
+        // 유사 이미지 모두 저장 (가격 유무 관계없이)
+        if (match.link || match.thumbnail) {
+          const priceValue = match.price 
+            ? parseInt(String(match.price.extracted_value || match.price.value || '0').replace(/[^0-9]/g, '')) || 0
+            : 0;
+          
+          visualMatches.push({
+            name: match.title || '유사 상품',
+            price: priceValue,
+            priceText: priceValue > 0 ? `${priceValue.toLocaleString()}원` : '가격 미정',
+            link: match.link || '',
+            image: match.thumbnail || '',
+            source: match.source || 'Google Lens',
+            type: 'visual_match',
           });
+          
+          // 가격 있는 건 쇼핑 결과에도 추가
+          if (priceValue > 0 && match.link) {
+            shoppingResults.push({
+              name: match.title || '',
+              price: priceValue,
+              priceText: `${priceValue.toLocaleString()}원`,
+              link: match.link,
+              image: match.thumbnail || '',
+              source: match.source || 'Google Lens',
+              type: 'shopping',
+            });
+          }
         }
       }
     }
@@ -459,18 +478,54 @@ const searchWithGoogleLens = async (imageUrl) => {
       });
     }
 
-    console.log(`[SerpAPI] 제품: ${productName || '미확인'}, 브랜드: ${brand || '미확인'}, 관련검색: ${relatedSearches.length}개`);
+    console.log(`[SerpAPI] 제품: ${productName || '미확인'}, 브랜드: ${brand || '미확인'}, 유사이미지: ${visualMatches.length}개, 관련검색: ${relatedSearches.length}개`);
     
     return {
       productName,
       brand,
-      relatedSearches: [...new Set(relatedSearches)].slice(0, 5),
-      shoppingResults: shoppingResults.slice(0, 10),
+      relatedSearches: [...new Set(relatedSearches)].slice(0, 10),
+      shoppingResults: shoppingResults.slice(0, 15),
+      visualMatches: visualMatches.slice(0, 20), // 유사 이미지 최대 20개
     };
   } catch (error) {
     console.error('[SerpAPI] 에러:', error.message);
-    return { productName: null, brand: null, relatedSearches: [], shoppingResults: [] };
+    return { productName: null, brand: null, relatedSearches: [], shoppingResults: [], visualMatches: [] };
   }
+};
+
+// SerpAPI 관련검색어에서 좋은 키워드 추출
+const extractGoodKeywordsFromSerp = (relatedSearches) => {
+  const goodKeywords = [];
+  
+  for (const search of relatedSearches) {
+    // 한글이 포함된 것 우선 (제품명일 가능성 높음)
+    const hasKorean = /[가-힣]/.test(search);
+    // 너무 긴 것은 제외, 적당한 길이만
+    const cleaned = search.replace(/[-_:]/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    if (cleaned.length > 3 && cleaned.length < 60) {
+      // 쇼핑몰명이나 불필요한 부분 제거
+      let keyword = cleaned
+        .replace(/사이즈\s*\.{3,}|사이즈\s*선택.*/gi, '')
+        .replace(/신세계백화점|롯데백화점|현대백화점/gi, '')
+        .replace(/\s*-\s*$/, '')
+        .trim();
+      
+      if (keyword.length > 3) {
+        goodKeywords.push({
+          keyword,
+          hasKorean,
+          priority: hasKorean ? 1 : 2 // 한글 키워드 우선
+        });
+      }
+    }
+  }
+  
+  // 한글 키워드 우선 정렬
+  return goodKeywords
+    .sort((a, b) => a.priority - b.priority)
+    .map(k => k.keyword)
+    .slice(0, 5);
 };
 
 // SerpAPI - Google Shopping 검색 (키워드 기반)
@@ -1011,15 +1066,52 @@ exports.searchImage = async (req, res) => {
     }
     if (detectedBrand) console.log(`감지된 브랜드: ${detectedBrand}`);
 
-    // [3단계] 다중 검색 키워드 생성 (SerpAPI 결과 포함)
+    // [3단계] 다중 검색 키워드 생성 (SerpAPI 결과 우선!)
     console.log(`\n[3단계] 다중 검색 키워드 생성 중...`);
+    
+    // SerpAPI에서 좋은 키워드 먼저 추출 (한글 키워드 우선)
+    const serpKeywords = extractGoodKeywordsFromSerp(serpData.relatedSearches);
+    console.log(`SerpAPI 추출 키워드 (${serpKeywords.length}개): ${serpKeywords.join(', ')}`);
+    
+    // Vision API 기반 키워드 생성 (보조)
     const multiKeywords = generateMultipleSearchKeywords(bestGuess, topEntities, detectedBrand, labels, allLogos);
     
-    // SerpAPI 관련 검색어 추가
-    serpData.relatedSearches.forEach(search => {
-      const cleaned = cleanSearchQuery(search);
-      if (cleaned.length > 3 && cleaned.length < 50 && !multiKeywords.keywords.includes(cleaned)) {
-        multiKeywords.keywords.push(cleaned);
+    // SerpAPI 키워드를 맨 앞에 배치 (우선순위 최고)
+    const prioritizedKeywords = [];
+    
+    // 1순위: SerpAPI 관련검색 (한글 우선)
+    serpKeywords.forEach(kw => {
+      if (!prioritizedKeywords.includes(kw)) {
+        prioritizedKeywords.push(kw);
+      }
+    });
+    
+    // 2순위: SerpAPI 제품명
+    if (serpData.productName) {
+      const cleanedProductName = cleanSearchQuery(serpData.productName);
+      if (cleanedProductName.length > 3 && !prioritizedKeywords.includes(cleanedProductName)) {
+        prioritizedKeywords.unshift(cleanedProductName); // 맨 앞에!
+      }
+    }
+    
+    // 3순위: 브랜드 + 제품유형 조합
+    if (detectedBrand) {
+      const productType = detectProductType([...labels, ...topEntities.map(e => e.description)]);
+      if (productType) {
+        const brandCombo = `${detectedBrand} ${productType}`;
+        if (!prioritizedKeywords.includes(brandCombo)) {
+          prioritizedKeywords.push(brandCombo);
+        }
+      }
+    }
+    
+    // 4순위: Vision API 키워드 (영어 라벨은 한국 쇼핑몰에서 효과 낮음)
+    multiKeywords.keywords.forEach(kw => {
+      // 너무 일반적인 영어 단어 필터링
+      const genericWords = ['girl', 'boy', 'woman', 'man', 'person', 'trousers', 'clothing', 'standing', 'fashion', 'sleeve', 'collar'];
+      const isGeneric = genericWords.some(g => kw.toLowerCase().includes(g));
+      if (!isGeneric && !prioritizedKeywords.includes(kw)) {
+        prioritizedKeywords.push(kw);
       }
     });
     
@@ -1030,14 +1122,17 @@ exports.searchImage = async (req, res) => {
       const modelNumbers = ocrWords.filter(w => /[A-Za-z]+.*\d+|\d+.*[A-Za-z]+/.test(w));
       modelNumbers.forEach(model => {
         const keyword = `${detectedBrand} ${model}`;
-        if (!multiKeywords.keywords.includes(keyword)) {
-          multiKeywords.keywords.push(keyword);
+        if (!prioritizedKeywords.includes(keyword)) {
+          prioritizedKeywords.push(keyword);
         }
       });
     }
     
-    // 키워드 최대 10개로 제한
-    multiKeywords.keywords = multiKeywords.keywords.slice(0, 10);
+    // 최종 키워드 목록 (최대 12개)
+    multiKeywords.keywords = prioritizedKeywords.slice(0, 12);
+    multiKeywords.primary = multiKeywords.keywords[0] || multiKeywords.primary;
+    
+    console.log(`최종 검색 키워드 (${multiKeywords.keywords.length}개): ${multiKeywords.keywords.join(', ')}`);
     
     if (multiKeywords.keywords.length === 0) {
       console.log(`상품 인식 실패`);
@@ -1060,29 +1155,47 @@ exports.searchImage = async (req, res) => {
     // [4단계] 쇼핑몰 검색 (다중 키워드 사용 + SerpAPI 결과 포함)
     console.log(`\n[4단계] 쇼핑몰 검색 중... (${multiKeywords.keywords.length}개 키워드)`);
     
-    // 병렬 검색: 기존 쇼핑몰 + Google Shopping (SerpAPI)
-    const [mallResults, googleResults] = await Promise.all([
-      searchAllShoppingMalls(multiKeywords.keywords, multiKeywords.koreanKeywords),
-      searchGoogleShopping(multiKeywords.keywords[0]), // 첫 번째 키워드로 Google Shopping
+    // 검색에 사용할 키워드 선정 (상위 5개)
+    const searchKeywords = multiKeywords.keywords.slice(0, 5);
+    
+    // 병렬 검색: 기존 쇼핑몰 + Google Shopping (상위 3개 키워드 각각 검색)
+    const googleShoppingPromises = searchKeywords.slice(0, 3).map(kw => searchGoogleShopping(kw));
+    
+    const [mallResults, ...googleResultsArray] = await Promise.all([
+      searchAllShoppingMalls(searchKeywords, multiKeywords.koreanKeywords),
+      ...googleShoppingPromises
     ]);
+    
+    // Google Shopping 결과 합치기
+    const googleResults = googleResultsArray.flat();
+    console.log(`Google Shopping 결과: ${googleResults.length}개 (${searchKeywords.slice(0,3).join(', ')})`);
     
     // SerpAPI에서 찾은 쇼핑 결과도 추가
     let allResults = [...mallResults, ...googleResults, ...serpData.shoppingResults];
+    console.log(`SerpAPI 직접 결과: ${serpData.shoppingResults.length}개`);
     
-    // 중복 제거
+    // 중복 제거 (URL 기반)
     const seenUrls = new Set();
+    const seenTitles = new Set();
     allResults = allResults.filter(item => {
       if (!item || !item.link) return false;
       const normalizedUrl = item.link.split('?')[0].toLowerCase();
+      const normalizedTitle = item.name?.toLowerCase().replace(/\s+/g, '').slice(0, 30);
+      
       if (seenUrls.has(normalizedUrl)) return false;
+      // 제목이 너무 비슷한 것도 중복 처리
+      if (normalizedTitle && seenTitles.has(normalizedTitle)) return false;
+      
       seenUrls.add(normalizedUrl);
+      if (normalizedTitle) seenTitles.add(normalizedTitle);
       return true;
     });
     
-    // 가격순 정렬
+    // 가격순 정렬 (가격 있는 것 우선, 그 중 저렴한 순)
     allResults.sort((a, b) => {
       if (a.price > 0 && b.price === 0) return -1;
       if (a.price === 0 && b.price > 0) return 1;
+      if (a.price === 0 && b.price === 0) return 0;
       return a.price - b.price;
     });
 
@@ -1110,6 +1223,7 @@ exports.searchImage = async (req, res) => {
       serpProductName: serpData.productName,
       count: allResults.length,
       results: allResults.slice(0, 50),
+      visualMatches: serpData.visualMatches || [], // 유사 이미지 (가격 없는 것 포함)
       lowestPrice: allResults[0] || null,
       processingTime: `${processingTime}ms`,
     });

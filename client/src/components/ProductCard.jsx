@@ -28,9 +28,9 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
     try {
       // 2. 백엔드에 저장 요청 (필요한 정보만 골라서 보냄)
       await axios.post('/wishlist', {
-        productTitle: item.title,
+        productTitle: item.title || item.name,
         price: item.price,
-        imageUrl: item.thumbnail,
+        imageUrl: item.thumbnail || item.image,
         productLink: item.link
       });
 
@@ -61,9 +61,10 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
       {/* 1. 상품 썸네일 */}
       <div className="relative h-48 overflow-hidden bg-gray-100">
         <img
-          src={item.thumbnail || item.imageUrl} // 검색결과(thumbnail)와 찜목록(imageUrl) 변수명이 달라서 둘 다 대응
-          alt={item.title || item.productTitle}
+          src={item.thumbnail || item.image || item.imageUrl} // 검색결과(thumbnail/image)와 찜목록(imageUrl) 대응
+          alt={item.title || item.name || item.productTitle}
           className="object-cover w-full h-full transition-transform group-hover:scale-105"
+          onError={(e) => { e.target.src = 'https://via.placeholder.com/200x200?text=No+Image'; }}
         />
 
         {/* 하트 버튼 (검색 결과에서만 보임) */}
@@ -102,15 +103,24 @@ export default function ProductCard({ item, isWishlistMode = false, onDelete }) 
             추천
           </span>
         )}
+        {item.type === 'visual_match' && (
+          <span className="inline-block px-2 py-0.5 mb-2 text-xs font-semibold text-purple-600 bg-purple-100 rounded">
+            유사
+          </span>
+        )}
 
         <h3 className="mb-2 text-sm font-medium text-gray-800 line-clamp-2 min-h-[40px]">
-          {item.title || item.productTitle}
+          {item.title || item.name || item.productTitle}
         </h3>
 
         <div className="flex items-end justify-between mt-2">
           {item.price > 0 ? (
             <p className="text-lg font-bold text-gray-900">
               {formatPrice(item.price)}원
+            </p>
+          ) : item.priceText ? (
+            <p className="text-sm font-bold text-gray-400">
+              {item.priceText}
             </p>
           ) : (
             <p className="text-sm font-bold text-gray-400">

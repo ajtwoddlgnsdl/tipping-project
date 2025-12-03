@@ -16,6 +16,8 @@ export default function Home() {
     const [preview, setPreview] = useState(null); // 미리보기 이미지 URL
     const [loading, setLoading] = useState(false); // 로딩 중인가?
     const [results, setResults] = useState([]);    // 검색 결과 리스트
+    const [visualMatches, setVisualMatches] = useState([]); // 유사 이미지 (SerpAPI)
+    const [searchInfo, setSearchInfo] = useState(null); // 검색 정보
     
     // 이미지 편집 관련 상태
     const [showEditor, setShowEditor] = useState(false);
@@ -36,6 +38,8 @@ export default function Home() {
         setPreview(previewUrl);
         setOriginalPreview(previewUrl); // 원본 저장
         setResults([]); // 기존 결과 초기화
+        setVisualMatches([]); // 유사 이미지 초기화
+        setSearchInfo(null);
     };
 
     // 이미지 편집 완료 핸들러
@@ -63,6 +67,8 @@ export default function Home() {
 
         setLoading(true); // 로딩 시작
         setResults([]);   // 기존 결과 초기화
+        setVisualMatches([]); // 유사 이미지 초기화
+        setSearchInfo(null);
 
         const formData = new FormData();
         formData.append('image', file);
@@ -74,7 +80,13 @@ export default function Home() {
             });
 
             console.log("검색 결과:", response.data);
-            setResults(response.data.results); // 결과 저장
+            setResults(response.data.results || []); // 결과 저장
+            setVisualMatches(response.data.visualMatches || []); // 유사 이미지 저장
+            setSearchInfo({
+                productName: response.data.serpProductName,
+                brand: response.data.detectedBrand,
+                keywords: response.data.searchKeywords,
+            });
 
         } catch (error) {
             console.error(error);
@@ -205,14 +217,30 @@ export default function Home() {
 
                 {/* 1.5. 결과 없음 안내 (추가된 부분) */}
                 {/* 로딩도 아니고, 결과도 비어있고, 검색을 시도한 적이 있을 때만 표시 */}
-                {!loading && results.length === 0 && file && (
+                {!loading && results.length === 0 && visualMatches.length === 0 && file && searchInfo && (
                     <div className="py-10 text-center text-gray-500 animate-fade-in">
                         <p className="text-xl font-bold">검색 결과가 없습니다. 😢</p>
                         <p className="mt-2 text-sm">옷이 더 잘 보이는 선명한 사진으로 다시 시도해보세요.</p>
                     </div>
                 )}
+
+                {/* 검색 정보 표시 */}
+                {!loading && searchInfo && (searchInfo.productName || searchInfo.brand) && (
+                    <div className="p-4 mb-6 bg-blue-50 rounded-xl">
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-blue-800">
+                            <span className="font-medium">🔍 AI 분석 결과:</span>
+                            {searchInfo.productName && (
+                                <span className="px-2 py-1 bg-blue-100 rounded-lg">{searchInfo.productName}</span>
+                            )}
+                            {searchInfo.brand && (
+                                <span className="px-2 py-1 bg-green-100 text-green-800 rounded-lg">브랜드: {searchInfo.brand}</span>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* 2. 검색 결과 리스트 */}
-                {!loading && results.length > 0 && (
+                {!loading && (results.length > 0 || visualMatches.length > 0) && (
                     <div className="animate-fade-in-up">
 
                         {/* 1. 가격 정보가 있는 상품 (Shopping) */}
@@ -236,7 +264,7 @@ export default function Home() {
 
                         {/* 2. 가격 정보는 없지만 비슷한 상품 (Visual) */}
                         {results.filter(item => item.price === 0).length > 0 && (
-                            <div>
+                            <div className="mb-12">
                                 <h3 className="flex items-center gap-2 mb-6 text-2xl font-bold text-gray-900">
                                     <span>📷 유사한 스타일 (가격 확인 필요)</span>
                                     <span className="px-2 py-1 text-sm text-gray-600 bg-gray-200 rounded-full">
@@ -249,6 +277,23 @@ export default function Home() {
                                         .map((item, index) => (
                                             <ProductCard key={`visual-${index}`} item={item} />
                                         ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 3. SerpAPI 유사 이미지 (Google Lens) */}
+                        {visualMatches.length > 0 && (
+                            <div>
+                                <h3 className="flex items-center gap-2 mb-6 text-2xl font-bold text-gray-900">
+                                    <span>🔍 Google에서 찾은 유사 상품</span>
+                                    <span className="px-2 py-1 text-sm text-purple-600 bg-purple-100 rounded-full">
+                                        {visualMatches.length}개
+                                    </span>
+                                </h3>
+                                <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                                    {visualMatches.map((item, index) => (
+                                        <ProductCard key={`serp-${index}`} item={item} />
+                                    ))}
                                 </div>
                             </div>
                         )}
