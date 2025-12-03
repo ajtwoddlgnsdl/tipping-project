@@ -546,10 +546,6 @@ const extractKeywordsFromTitle = (title) => {
   
   return keywords;
 };
-    console.error('[SerpAPI] 에러:', error.message);
-    return { productName: null, brand: null, relatedSearches: [], shoppingResults: [], visualMatches: [] };
-  }
-};
 
 // SerpAPI 관련검색어에서 좋은 키워드 추출
 const extractGoodKeywordsFromSerp = (relatedSearches) => {
