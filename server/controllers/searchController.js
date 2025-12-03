@@ -145,30 +145,80 @@ const detectLogos = async (imageUrl) => {
   } catch (error) { return []; }
 };
 
-// 네이버 쇼핑 검색
+// 네이버 쇼핑 API 검색 (공식 API 사용 - 가장 안정적)
+const searchNaverShoppingAPI = async (keyword) => {
+  try {
+    if (!keyword) return [];
+    
+    // 네이버 API 키가 없으면 스킵
+    if (!process.env.NAVER_CLIENT_ID || !process.env.NAVER_CLIENT_SECRET) {
+      console.log(`[네이버API] API 키 없음, 스킵`);
+      return [];
+    }
+    
+    console.log(`[네이버API] 검색: "${keyword}"`);
+    const searchUrl = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(keyword)}&display=15&sort=asc`;
+    
+    const response = await axios.get(searchUrl, {
+      timeout: 10000,
+      headers: {
+        'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+        'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET,
+      }
+    });
+    
+    const items = response.data.items || [];
+    const results = items.map(item => ({
+      title: cleanSearchQuery(item.title.replace(/<[^>]*>/g, '')).substring(0, 100),
+      price: parseInt(item.lprice) || 0,
+      currency: 'KRW',
+      thumbnail: item.image || '',
+      link: item.link || '',
+      source: item.mallName || '네이버쇼핑',
+      type: 'shopping',
+      productId: item.productId,
+    }));
+    
+    console.log(`[네이버API] ${results.length}개 상품`);
+    return results;
+  } catch (error) {
+    console.error("[네이버API] 에러:", error.message);
+    return [];
+  }
+};
+
+// 네이버 쇼핑 검색 (스크래핑 - API 없을 때 백업)
 const searchNaverShopping = async (keyword) => {
   try {
     if (!keyword) return [];
     console.log(`[네이버] 검색: "${keyword}"`);
-    const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}&sort=price_asc`;
+    
+    // 모바일 페이지가 봇 차단이 덜함
+    const searchUrl = `https://msearch.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}&sort=price_asc`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
       }
     });
     const $ = cheerio.load(response.data);
     const results = [];
-    const selectors = ['div[class*="product_item"]', 'li[class*="product_item"]', 'div[class*="basicList_item"]'];
+    const selectors = ['div[class*="product_item"]', 'li[class*="product_item"]', 'div[class*="basicList_item"]', 'a[class*="product"]'];
     for (const selector of selectors) {
       $(selector).slice(0, 12).each((i, el) => {
         const $el = $(el);
         let title = $el.find('[class*="product_title"]').text().trim() ||
                     $el.find('[class*="title"]').first().text().trim() ||
-                    $el.find('a[title]').attr('title');
+                    $el.find('a[title]').attr('title') ||
+                    $el.text().trim().substring(0, 50);
         let link = $el.find('a[href*="shopping"]').first().attr('href') ||
                    $el.find('a[href*="smartstore"]').first().attr('href') ||
+                   $el.attr('href') ||
                    $el.find('a').first().attr('href') || '';
         let priceText = $el.find('[class*="price_num"]').first().text() ||
                         $el.find('[class*="price"]').first().text();
@@ -177,7 +227,7 @@ const searchNaverShopping = async (keyword) => {
                         $el.find('img[data-src]').first().attr('data-src') || '';
         const mall = $el.find('[class*="mall"]').text().trim() || '네이버쇼핑';
         if (title && link && title.length > 2) {
-          if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : 'https://search.shopping.naver.com' + link;
+          if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : 'https://msearch.shopping.naver.com' + link;
           if (thumbnail && !thumbnail.startsWith('http')) thumbnail = thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail;
           results.push({ title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW', thumbnail, link, source: mall, type: 'shopping' });
         }
@@ -192,7 +242,7 @@ const searchNaverShopping = async (keyword) => {
   }
 };
 
-// 다나와 검색
+// 다나와 검색 (봇 차단 적음)
 const searchDanawa = async (keyword) => {
   try {
     if (!keyword) return [];
@@ -200,22 +250,35 @@ const searchDanawa = async (keyword) => {
     const searchUrl = `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(keyword)}&tab=main&sort=lowprice`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+        'Referer': 'https://www.danawa.com/',
+      }
     });
     const $ = cheerio.load(response.data);
     const results = [];
-    $('li.prod_item, div.prod_item').slice(0, 8).each((i, el) => {
+    $('li.prod_item, div.prod_item, ul.product_list li').slice(0, 10).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('.prod_name a').text().trim() || $el.find('[class*="prod_name"]').text().trim();
-      const link = $el.find('.prod_name a').attr('href') || $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('.price_sect strong').text() || $el.find('[class*="price"] strong').text();
+      const title = $el.find('.prod_name a').text().trim() || 
+                    $el.find('[class*="prod_name"]').text().trim() ||
+                    $el.find('.prod_info a').text().trim();
+      const link = $el.find('.prod_name a').attr('href') || 
+                   $el.find('.prod_info a').attr('href') ||
+                   $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('.price_sect strong').text() || 
+                        $el.find('[class*="price"] strong').text() ||
+                        $el.find('.prod_pricelist em').text();
       const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
-      const thumbnail = $el.find('.thumb_image img').attr('src') || $el.find('img').first().attr('src') || '';
+      const thumbnail = $el.find('.thumb_image img').attr('src') || 
+                        $el.find('.thumb_image img').attr('data-src') ||
+                        $el.find('img').first().attr('src') || '';
       if (title && link) {
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
-          link: link.startsWith('http') ? link : `https://search.danawa.com${link}`,
+          link: link.startsWith('http') ? link : `https://prod.danawa.com${link}`,
           source: '다나와', type: 'shopping'
         });
       }
@@ -228,27 +291,38 @@ const searchDanawa = async (keyword) => {
   }
 };
 
-// 11번가 검색
+// 11번가 검색 (API 사용)
 const search11st = async (keyword) => {
   try {
     if (!keyword) return [];
     console.log(`[11번가] 검색: "${keyword}"`);
-    const searchUrl = `https://search.11st.co.kr/Search.tmall?kwd=${encodeURIComponent(keyword)}&sortCd=LWPR`;
+    
+    // 11번가 모바일 (봇 차단 완화)
+    const searchUrl = `https://m.11st.co.kr/search/searchList.tmall?searchKeyword=${encodeURIComponent(keyword)}&sortCd=LWPR`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      }
     });
     const $ = cheerio.load(response.data);
     const results = [];
-    $('li.c_item, div.c_item, li[data-log-body]').slice(0, 8).each((i, el) => {
+    $('li[class*="item"], div[class*="product"], .c_item').slice(0, 10).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('.c_tit a').text().trim() || $el.find('[class*="title"]').text().trim();
-      let link = $el.find('.c_tit a').attr('href') || $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('.c_prc strong').text() || $el.find('[class*="price"] strong').text();
+      const title = $el.find('[class*="title"]').text().trim() || 
+                    $el.find('.c_tit a').text().trim() ||
+                    $el.find('a').first().text().trim();
+      let link = $el.find('a[href*="products"]').attr('href') ||
+                 $el.find('.c_tit a').attr('href') || 
+                 $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="price"]').first().text() ||
+                        $el.find('.c_prc strong').text();
       const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
-      const thumbnail = $el.find('.c_prd_img img').attr('src') || $el.find('img').first().attr('src') || '';
-      if (title && link) {
-        if (!link.startsWith('http')) link = `https://www.11st.co.kr${link}`;
+      const thumbnail = $el.find('img').attr('src') || $el.find('img').attr('data-src') || '';
+      if (title && link && title.length > 2) {
+        if (!link.startsWith('http')) link = `https://m.11st.co.kr${link}`;
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
@@ -264,27 +338,40 @@ const search11st = async (keyword) => {
   }
 };
 
-// G마켓 검색
+// G마켓 검색 (모바일 버전으로 변경 - 봇 차단 완화)
 const searchGmarket = async (keyword) => {
   try {
     if (!keyword) return [];
     console.log(`[G마켓] 검색: "${keyword}"`);
-    const searchUrl = `https://browse.gmarket.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
+    
+    // 모바일 G마켓 사용
+    const searchUrl = `https://m.gmarket.co.kr/n/search?keyword=${encodeURIComponent(keyword)}&sort=PRICE_ASC`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
+      }
     });
     const $ = cheerio.load(response.data);
     const results = [];
-    $('[class*="box__item-container"], li.item__content').slice(0, 8).each((i, el) => {
+    $('div[class*="item"], li[class*="item"], .box__item-container, [class*="product"]').slice(0, 10).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('[class*="text__item-title"]').text().trim() || $el.find('.item_tit').text().trim();
-      let link = $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('[class*="text__value"]').first().text() || $el.find('[class*="price"]').text();
+      const title = $el.find('[class*="title"]').text().trim() ||
+                    $el.find('.link__item').text().trim() ||
+                    $el.find('a').text().trim();
+      let link = $el.find('a[href*="item"]').attr('href') ||
+                 $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="price"]').text() ||
+                        $el.find('.text__value').text();
       const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
       const thumbnail = $el.find('img').attr('src') || $el.find('img').attr('data-src') || '';
-      if (title && link) {
-        if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : `https://browse.gmarket.co.kr${link}`;
+      if (title && link && title.length > 2) {
+        if (!link.startsWith('http')) link = `https://m.gmarket.co.kr${link}`;
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
@@ -300,7 +387,7 @@ const searchGmarket = async (keyword) => {
   }
 };
 
-// SSG 검색
+// SSG 검색 (헤더 강화)
 const searchSSG = async (keyword) => {
   try {
     if (!keyword) return [];
@@ -308,18 +395,35 @@ const searchSSG = async (keyword) => {
     const searchUrl = `https://www.ssg.com/search.ssg?target=all&query=${encodeURIComponent(keyword)}&sort=price_asc`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+      }
     });
     const $ = cheerio.load(response.data);
     const results = [];
-    $('li.cunit_t232, li[class*="cunit"]').slice(0, 8).each((i, el) => {
+    $('li.cunit_t232, li[class*="cunit"], div.cunit').slice(0, 10).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('.cunit_info .title').text().trim() || $el.find('[class*="title"]').text().trim();
+      const title = $el.find('.cunit_info .title').text().trim() || 
+                    $el.find('[class*="title"]').text().trim() ||
+                    $el.find('.tit').text().trim();
       let link = $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('.opt_price .ssg_price').text() || $el.find('[class*="price"]').text();
+      const priceText = $el.find('.opt_price .ssg_price').text() || 
+                        $el.find('[class*="price"]').text() ||
+                        $el.find('.price').text();
       const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
-      const thumbnail = $el.find('.cunit_img img').attr('src') || $el.find('img').first().attr('src') || '';
-      if (title && link) {
+      const thumbnail = $el.find('.cunit_img img').attr('src') || 
+                        $el.find('img').first().attr('src') || 
+                        $el.find('img').first().attr('data-src') || '';
+      if (title && link && title.length > 2) {
         if (!link.startsWith('http')) link = `https://www.ssg.com${link}`;
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
@@ -336,27 +440,40 @@ const searchSSG = async (keyword) => {
   }
 };
 
-// 옥션 검색
+// 옥션 검색 (모바일 버전으로 변경 - 봇 차단 완화)
 const searchAuction = async (keyword) => {
   try {
     if (!keyword) return [];
     console.log(`[옥션] 검색: "${keyword}"`);
-    const searchUrl = `https://browse.auction.co.kr/search?keyword=${encodeURIComponent(keyword)}&s=8`;
+    
+    // 모바일 옥션 사용
+    const searchUrl = `https://m.auction.co.kr/n/search?keyword=${encodeURIComponent(keyword)}&sort=PRICE_ASC`;
     const response = await axios.get(searchUrl, {
       timeout: 10000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
+      }
     });
     const $ = cheerio.load(response.data);
     const results = [];
-    $('[class*="box__item-container"], li.item__content').slice(0, 8).each((i, el) => {
+    $('div[class*="item"], li[class*="item"], .box__item-container, [class*="product"]').slice(0, 10).each((i, el) => {
       const $el = $(el);
-      const title = $el.find('[class*="text__item-title"]').text().trim() || $el.find('.item_tit').text().trim();
-      let link = $el.find('a').first().attr('href') || '';
-      const priceText = $el.find('[class*="text__value"]').first().text() || $el.find('[class*="price"]').text();
+      const title = $el.find('[class*="title"]').text().trim() ||
+                    $el.find('.link__item').text().trim() ||
+                    $el.find('a').text().trim();
+      let link = $el.find('a[href*="item"]').attr('href') ||
+                 $el.find('a').first().attr('href') || '';
+      const priceText = $el.find('[class*="price"]').text() ||
+                        $el.find('.text__value').text();
       const price = parseInt(priceText.replace(/[^0-9]/g, '')) || 0;
-      const thumbnail = $el.find('img').attr('src') || '';
-      if (title && link) {
-        if (!link.startsWith('http')) link = link.startsWith('//') ? 'https:' + link : `https://browse.auction.co.kr${link}`;
+      const thumbnail = $el.find('img').attr('src') || $el.find('img').attr('data-src') || '';
+      if (title && link && title.length > 2) {
+        if (!link.startsWith('http')) link = `https://m.auction.co.kr${link}`;
         results.push({
           title: cleanSearchQuery(title).substring(0, 100), price, currency: 'KRW',
           thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
