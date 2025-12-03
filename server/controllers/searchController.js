@@ -387,6 +387,134 @@ const detectText = async (imageUrl) => {
   }
 };
 
+// ============================================
+// SerpAPI - Google Lens 역이미지 검색 (제품 정보 추출)
+// ============================================
+const searchWithGoogleLens = async (imageUrl) => {
+  try {
+    const SERP_API_KEY = process.env.SERP_API_KEY;
+    if (!SERP_API_KEY) {
+      console.log('[SerpAPI] API 키 없음, 스킵');
+      return { productName: null, brand: null, relatedSearches: [], shoppingResults: [] };
+    }
+
+    console.log('[SerpAPI] Google Lens 검색 중...');
+    const response = await axios.get('https://serpapi.com/search', {
+      params: {
+        engine: 'google_lens',
+        url: imageUrl,
+        api_key: SERP_API_KEY,
+        hl: 'ko',
+        country: 'kr',
+      },
+      timeout: 15000,
+    });
+
+    const data = response.data;
+    let productName = null;
+    let brand = null;
+    const relatedSearches = [];
+    const shoppingResults = [];
+
+    // 1. Visual Matches에서 제품 정보 추출
+    if (data.visual_matches && data.visual_matches.length > 0) {
+      for (const match of data.visual_matches.slice(0, 5)) {
+        if (match.title) {
+          relatedSearches.push(match.title);
+          // 브랜드 감지
+          for (const b of BRAND_DATABASE) {
+            if (match.title.toLowerCase().includes(b.toLowerCase())) {
+              brand = b;
+              break;
+            }
+          }
+        }
+        // 쇼핑 결과
+        if (match.price && match.link) {
+          shoppingResults.push({
+            title: match.title || '',
+            price: parseInt(String(match.price.extracted_value || match.price.value || '0').replace(/[^0-9]/g, '')) || 0,
+            currency: 'KRW',
+            link: match.link,
+            thumbnail: match.thumbnail || '',
+            source: match.source || 'Google',
+            type: 'shopping',
+          });
+        }
+      }
+    }
+
+    // 2. Knowledge Graph에서 제품명 추출
+    if (data.knowledge_graph) {
+      productName = data.knowledge_graph.title || null;
+      if (data.knowledge_graph.subtitle) {
+        brand = brand || data.knowledge_graph.subtitle;
+      }
+    }
+
+    // 3. 텍스트 결과에서 추가 정보
+    if (data.text_results && data.text_results.length > 0) {
+      data.text_results.slice(0, 3).forEach(t => {
+        if (t.text) relatedSearches.push(t.text);
+      });
+    }
+
+    console.log(`[SerpAPI] 제품: ${productName || '미확인'}, 브랜드: ${brand || '미확인'}, 관련검색: ${relatedSearches.length}개`);
+    
+    return {
+      productName,
+      brand,
+      relatedSearches: [...new Set(relatedSearches)].slice(0, 5),
+      shoppingResults: shoppingResults.slice(0, 10),
+    };
+  } catch (error) {
+    console.error('[SerpAPI] 에러:', error.message);
+    return { productName: null, brand: null, relatedSearches: [], shoppingResults: [] };
+  }
+};
+
+// SerpAPI - Google Shopping 검색 (키워드 기반)
+const searchGoogleShopping = async (keyword) => {
+  try {
+    const SERP_API_KEY = process.env.SERP_API_KEY;
+    if (!SERP_API_KEY || !keyword) return [];
+
+    console.log(`[Google Shopping] 검색: "${keyword}"`);
+    const response = await axios.get('https://serpapi.com/search', {
+      params: {
+        engine: 'google_shopping',
+        q: keyword,
+        api_key: SERP_API_KEY,
+        hl: 'ko',
+        gl: 'kr',
+        location: 'South Korea',
+      },
+      timeout: 10000,
+    });
+
+    const results = [];
+    const items = response.data.shopping_results || [];
+    
+    items.slice(0, 10).forEach(item => {
+      results.push({
+        title: cleanSearchQuery(item.title || '').substring(0, 100),
+        price: parseInt(String(item.extracted_price || item.price || '0').replace(/[^0-9]/g, '')) || 0,
+        currency: 'KRW',
+        link: item.link || '',
+        thumbnail: item.thumbnail || '',
+        source: item.source || 'Google Shopping',
+        type: 'shopping',
+      });
+    });
+
+    console.log(`[Google Shopping] ${results.length}개 상품`);
+    return results;
+  } catch (error) {
+    console.error('[Google Shopping] 에러:', error.message);
+    return [];
+  }
+};
+
 // 네이버 쇼핑 API 검색 (공식 API 사용 - 가장 안정적)
 const searchNaverShoppingAPI = async (keyword) => {
   try {
@@ -826,9 +954,9 @@ const uploadToImgBB = async (filePath) => {
 exports.searchImage = async (req, res) => {
   const startTime = Date.now();
   try {
-    console.log(`\n${'='.repeat(50)}`);
+    console.log(`\n${'='.repeat(60)}`);
     console.log(`이미지 검색 시작 - ${new Date().toLocaleString('ko-KR')}`);
-    console.log(`${'='.repeat(50)}`);
+    console.log(`${'='.repeat(60)}`);
 
     // [1단계] 이미지 URL 확보
     let targetUrl = req.body.imageUrl;
@@ -842,48 +970,74 @@ exports.searchImage = async (req, res) => {
       return res.status(400).json({ error: "이미지가 필요합니다." });
     }
 
-    // [2단계] Vision API 분석 (병렬 처리 - 텍스트 감지 추가)
-    console.log(`\n[2단계] Vision API 분석 중...`);
-    const [webData, labels, logos, textData] = await Promise.all([
+    // [2단계] Vision API + SerpAPI 분석 (병렬 처리)
+    console.log(`\n[2단계] AI 이미지 분석 중...`);
+    const [webData, labels, logos, textData, serpData] = await Promise.all([
       detectWebEntities(targetUrl),
       detectLabels(targetUrl),
       detectLogos(targetUrl),
-      detectText(targetUrl), // OCR 추가
+      detectText(targetUrl),
+      searchWithGoogleLens(targetUrl), // SerpAPI Google Lens 추가
     ]);
 
     const entities = webData.entities || [];
     const bestGuessLabels = webData.bestGuessLabels || [];
-    const bestGuess = bestGuessLabels[0]?.label || "";
+    let bestGuess = bestGuessLabels[0]?.label || "";
+    
+    // SerpAPI에서 더 정확한 제품명을 찾았으면 사용
+    if (serpData.productName && serpData.productName.length > bestGuess.length) {
+      console.log(`[SerpAPI] 제품명 발견: "${serpData.productName}"`);
+      bestGuess = serpData.productName;
+    }
     
     const topEntities = entities.filter(e => e && e.description && e.score > 0.2).slice(0, 10);
     console.log(`베스트 추측: "${bestGuess}"`);
     console.log(`상위 엔티티: ${topEntities.map(e => `${e.description}(${(e.score*100).toFixed(0)}%)`).join(', ')}`);
     if (labels.length > 0) console.log(`라벨: ${labels.slice(0, 8).join(', ')}`);
     if (logos.length > 0) console.log(`로고: ${logos.join(', ')}`);
-    if (textData.brands.length > 0) console.log(`OCR 브랜드: ${textData.brands.join(', ')}`);
-    if (textData.words.length > 0) console.log(`OCR 텍스트: ${textData.words.slice(0, 5).join(', ')}`);
+    if (textData.brands && textData.brands.length > 0) console.log(`OCR 브랜드: ${textData.brands.join(', ')}`);
+    if (textData.words && textData.words.length > 0) console.log(`OCR 텍스트: ${textData.words.slice(0, 5).join(', ')}`);
+    if (serpData.relatedSearches.length > 0) console.log(`SerpAPI 관련검색: ${serpData.relatedSearches.slice(0, 3).join(', ')}`);
     
-    // OCR에서 찾은 브랜드를 로고 목록에 추가
-    const allLogos = [...logos, ...textData.brands];
+    // OCR + SerpAPI에서 찾은 브랜드를 로고 목록에 추가
+    const ocrBrands = textData.brands || [];
+    const allLogos = [...logos, ...ocrBrands];
+    if (serpData.brand) allLogos.push(serpData.brand);
     
-    // 브랜드 감지 (로고, 엔티티, 라벨, OCR 모두 활용)
-    const detectedBrand = detectBrand(topEntities, labels, allLogos);
+    // 브랜드 감지 (로고, 엔티티, 라벨, OCR, SerpAPI 모두 활용)
+    let detectedBrand = detectBrand(topEntities, labels, allLogos);
+    if (!detectedBrand && serpData.brand) {
+      detectedBrand = serpData.brand;
+    }
     if (detectedBrand) console.log(`감지된 브랜드: ${detectedBrand}`);
 
-    // [3단계] 다중 검색 키워드 생성 (개선됨)
+    // [3단계] 다중 검색 키워드 생성 (SerpAPI 결과 포함)
     console.log(`\n[3단계] 다중 검색 키워드 생성 중...`);
     const multiKeywords = generateMultipleSearchKeywords(bestGuess, topEntities, detectedBrand, labels, allLogos);
     
+    // SerpAPI 관련 검색어 추가
+    serpData.relatedSearches.forEach(search => {
+      const cleaned = cleanSearchQuery(search);
+      if (cleaned.length > 3 && cleaned.length < 50 && !multiKeywords.keywords.includes(cleaned)) {
+        multiKeywords.keywords.push(cleaned);
+      }
+    });
+    
     // OCR에서 추출한 텍스트로 추가 키워드 생성
-    if (textData.words.length > 0 && detectedBrand) {
+    const ocrWords = textData.words || [];
+    if (ocrWords.length > 0 && detectedBrand) {
       // 모델명처럼 보이는 텍스트 찾기 (숫자+문자 조합)
-      const modelNumbers = textData.words.filter(w => /[A-Za-z]+.*\d+|\d+.*[A-Za-z]+/.test(w));
+      const modelNumbers = ocrWords.filter(w => /[A-Za-z]+.*\d+|\d+.*[A-Za-z]+/.test(w));
       modelNumbers.forEach(model => {
-        if (!multiKeywords.keywords.includes(`${detectedBrand} ${model}`)) {
-          multiKeywords.keywords.push(`${detectedBrand} ${model}`);
+        const keyword = `${detectedBrand} ${model}`;
+        if (!multiKeywords.keywords.includes(keyword)) {
+          multiKeywords.keywords.push(keyword);
         }
       });
     }
+    
+    // 키워드 최대 10개로 제한
+    multiKeywords.keywords = multiKeywords.keywords.slice(0, 10);
     
     if (multiKeywords.keywords.length === 0) {
       console.log(`상품 인식 실패`);
@@ -896,30 +1050,55 @@ exports.searchImage = async (req, res) => {
         detectedBrand: null,
         detectedLabels: labels.slice(0, 5),
         detectedEntities: topEntities.map(e => e.description),
-        ocrText: textData.words.slice(0, 5),
+        ocrText: ocrWords.slice(0, 5),
         count: 0,
         results: [],
         processingTime: `${Date.now() - startTime}ms`,
       });
     }
 
-    // [4단계] 쇼핑몰 검색 (다중 키워드 사용)
+    // [4단계] 쇼핑몰 검색 (다중 키워드 사용 + SerpAPI 결과 포함)
     console.log(`\n[4단계] 쇼핑몰 검색 중... (${multiKeywords.keywords.length}개 키워드)`);
-    const shoppingResults = await searchAllShoppingMalls(multiKeywords.keywords, multiKeywords.koreanKeywords);
+    
+    // 병렬 검색: 기존 쇼핑몰 + Google Shopping (SerpAPI)
+    const [mallResults, googleResults] = await Promise.all([
+      searchAllShoppingMalls(multiKeywords.keywords, multiKeywords.koreanKeywords),
+      searchGoogleShopping(multiKeywords.keywords[0]), // 첫 번째 키워드로 Google Shopping
+    ]);
+    
+    // SerpAPI에서 찾은 쇼핑 결과도 추가
+    let allResults = [...mallResults, ...googleResults, ...serpData.shoppingResults];
+    
+    // 중복 제거
+    const seenUrls = new Set();
+    allResults = allResults.filter(item => {
+      if (!item || !item.link) return false;
+      const normalizedUrl = item.link.split('?')[0].toLowerCase();
+      if (seenUrls.has(normalizedUrl)) return false;
+      seenUrls.add(normalizedUrl);
+      return true;
+    });
+    
+    // 가격순 정렬
+    allResults.sort((a, b) => {
+      if (a.price > 0 && b.price === 0) return -1;
+      if (a.price === 0 && b.price > 0) return 1;
+      return a.price - b.price;
+    });
 
     // [5단계] 응답
     const processingTime = Date.now() - startTime;
-    console.log(`\n검색 완료! ${shoppingResults.length}개 상품`);
-    if (shoppingResults.length > 0) {
-      console.log(`최저가: ${shoppingResults[0].price.toLocaleString()}원 (${shoppingResults[0].source})`);
+    console.log(`\n검색 완료! ${allResults.length}개 상품`);
+    if (allResults.length > 0) {
+      console.log(`최저가: ${allResults[0].price.toLocaleString()}원 (${allResults[0].source})`);
     }
     console.log(`처리 시간: ${processingTime}ms`);
-    console.log(`${'='.repeat(50)}\n`);
+    console.log(`${'='.repeat(60)}\n`);
 
     res.json({
       success: true,
-      message: shoppingResults.length > 0 
-        ? `${multiKeywords.keywords.length}개 키워드로 검색하여 ${shoppingResults.length}개 상품을 찾았습니다.`
+      message: allResults.length > 0 
+        ? `${multiKeywords.keywords.length}개 키워드로 검색하여 ${allResults.length}개 상품을 찾았습니다.`
         : "해당 상품의 판매처를 찾지 못했습니다.",
       searchImage: targetUrl,
       searchKeyword: multiKeywords.primary,
@@ -928,9 +1107,10 @@ exports.searchImage = async (req, res) => {
       detectedBrand: detectedBrand,
       detectedLabels: labels.slice(0, 5),
       detectedEntities: topEntities.map(e => e.description),
-      count: shoppingResults.length,
-      results: shoppingResults.slice(0, 50),
-      lowestPrice: shoppingResults[0] || null,
+      serpProductName: serpData.productName,
+      count: allResults.length,
+      results: allResults.slice(0, 50),
+      lowestPrice: allResults[0] || null,
       processingTime: `${processingTime}ms`,
     });
 
