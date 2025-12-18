@@ -164,7 +164,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white">
       {/* 네비게이션 바 */}
-      <nav className="bg-gray-900">
+      <nav className="bg-black">
         <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
           <Link to="/">
             <img 
@@ -174,7 +174,6 @@ export default function Login() {
               draggable="false"
             />
           </Link>
-          <Link to="/register" className="font-bold text-white hover:text-blue-300">회원가입</Link>
         </div>
       </nav>
 
@@ -277,13 +276,6 @@ export default function Login() {
         <Link to="/register" className="hover:text-blue-500 transition-colors">
           회원가입
         </Link>
-        <span className="text-gray-300">|</span>
-        <button 
-          onClick={() => setShowResetModal(true)}
-          className="hover:text-blue-500 transition-colors"
-        >
-          비밀번호 재설정
-        </button>
       </div>
       </div>
 

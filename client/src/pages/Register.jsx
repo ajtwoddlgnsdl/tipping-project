@@ -62,86 +62,92 @@ export default function Register() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
-        <div className="flex justify-center mb-6">
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white">
+      {/* 네비게이션 바 */}
+      <nav className="bg-black">
+        <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
+          <Link to="/">
+            <img 
+              src={import.meta.env.BASE_URL + 'logo.png'} 
+              alt="Tipping" 
+              className="h-12 cursor-pointer" 
+              draggable="false"
+            />
+          </Link>
+        </div>
+      </nav>
+
+      {/* 메인 콘텐츠 */}
+      <div className="flex flex-col items-center justify-center px-6 py-12">
+        {/* 로고 */}
+        <div className="mb-8">
           <img 
             src={import.meta.env.BASE_URL + 'logo.png'} 
             alt="Tipping" 
-            className="h-16"
+            className="h-28 md:h-32"
+            draggable="false"
           />
         </div>
-        <h2 className="mb-6 text-2xl font-bold text-center text-gray-800">
+
+        <h2 className="mb-8 text-2xl font-bold text-center text-gray-800">
           회원가입
         </h2>
         
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={handleRegister} className="w-full max-w-sm space-y-4">
           {/* 이메일 */}
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-600">이메일</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="example@email.com"
-              required
-            />
-          </div>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+            placeholder="이메일 주소"
+            required
+          />
 
-          {/* 닉네임 (기획서에 닉네임이 있었죠!) */}
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-600">닉네임</label>
-            <input
-              type="text"
-              name="nickname"
-              value={formData.nickname}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="사용할 이름을 입력하세요"
-              required
-            />
-          </div>
+          {/* 닉네임 */}
+          <input
+            type="text"
+            name="nickname"
+            value={formData.nickname}
+            onChange={handleChange}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+            placeholder="닉네임"
+            required
+          />
 
-          {/* 비밀번호 */}
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-600">비밀번호</label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="••••••••"
-              required
-            />
-          </div>
+          {/* 비밀번호 */}}
+          <input
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+            placeholder="비밀번호 (영문+숫자 8자 이상)"
+            required
+          />
 
           {/* 비밀번호 확인 */}
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-600">비밀번호 확인</label>
-            <input
-              type="password"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="비밀번호를 한 번 더 입력하세요"
-              required
-            />
-          </div>
+          <input
+            type="password"
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+            placeholder="비밀번호 확인"
+            required
+          />
 
           {/* 가입 버튼 */}
           <button
             type="submit"
-            className="w-full py-3 mt-4 font-bold text-white transition bg-blue-500 rounded-lg hover:bg-blue-600"
+            className="w-full py-3 mt-4 font-bold text-white transition bg-blue-500 rounded-xl hover:bg-blue-600"
           >
             가입하기
           </button>
         </form>
 
-        <p className="mt-4 text-center text-gray-600">
+        <p className="mt-6 text-center text-gray-600">
           이미 계정이 있으신가요?{' '}
           <Link to="/login" className="text-blue-500 hover:underline">
             로그인 하러가기

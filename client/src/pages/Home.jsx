@@ -118,7 +118,7 @@ export default function Home() {
             )}
 
             {/* 헤더 (네비게이션) */}
-            <nav className="bg-gray-900">
+            <nav className="bg-black">
                 <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
                     <img 
                         src={import.meta.env.BASE_URL + 'logo.png'} 
@@ -141,7 +141,7 @@ export default function Home() {
                                 <button onClick={handleLogout} className="text-sm font-semibold text-gray-400 hover:text-red-400">로그아웃</button>
                             </div>
                         ) : (
-                            <Link to="/login" className="font-bold text-white hover:text-blue-300">로그인</Link>
+                            <Link to="/login" className="px-4 py-2 text-lg font-bold text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors">로그인</Link>
                         )}
                     </div>
                 </div>
@@ -199,7 +199,7 @@ export default function Home() {
                         disabled={!file || loading}
                         className={`w-full py-5 mt-8 text-xl font-bold text-white rounded-2xl transition-all shadow-lg
               ${!file ? 'bg-gray-300 cursor-not-allowed' :
-                                loading ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl'}`}
+                                loading ? 'bg-blue-300 cursor-wait' : 'bg-blue-400 hover:bg-blue-500 hover:shadow-xl'}`}
                     >
                         {loading ? (
                             <span className="flex items-center justify-center gap-2">
