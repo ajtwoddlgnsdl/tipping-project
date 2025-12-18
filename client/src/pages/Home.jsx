@@ -118,29 +118,29 @@ export default function Home() {
             )}
 
             {/* 헤더 (네비게이션) */}
-            <nav className="bg-white shadow-sm">
-                <div className="flex items-center justify-between px-4 py-4 mx-auto max-w-7xl">
+            <nav className="bg-gray-900">
+                <div className="flex items-center justify-between px-4 py-3 mx-auto max-w-7xl">
                     <img 
                         src={import.meta.env.BASE_URL + 'logo.png'} 
                         alt="Tipping" 
-                        className="h-10 cursor-pointer" 
+                        className="h-8 cursor-pointer" 
                         onClick={() => window.location.reload()}
                     />
                     <div>
                         {user ? (
                             <div className="flex items-center gap-4">
                                 {/* 👇 [추가된 부분] 찜 목록 버튼 */}
-                                <Link to="/wishlist" className="flex items-center gap-1 text-gray-600 hover:text-red-500">
+                                <Link to="/wishlist" className="flex items-center gap-1 text-gray-300 hover:text-white">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
                                     <span className="hidden sm:inline">찜 목록</span>
                                 </Link>
 
-                                <span className="ml-2 text-gray-400">|</span>
-                                <span className="text-gray-600"><b>{user.nickname}</b>님</span>
-                                <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-500">로그아웃</button>
+                                <span className="ml-2 text-gray-600">|</span>
+                                <span className="text-gray-300"><b>{user.nickname}</b>님</span>
+                                <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-red-400">로그아웃</button>
                             </div>
                         ) : (
-                            <Link to="/login" className="font-bold text-blue-500 hover:text-blue-600">로그인</Link>
+                            <Link to="/login" className="font-medium text-gray-300 hover:text-white">로그인</Link>
                         )}
                     </div>
                 </div>
