@@ -23,88 +23,11 @@ export default function Home() {
     const [showEditor, setShowEditor] = useState(false);
     const [originalPreview, setOriginalPreview] = useState(null); // 원본 이미지 URL
 
-    // 최근 검색 기록 상태
-    const [searchHistory, setSearchHistory] = useState([]);
-
     // 1. 유저 정보 불러오기
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
         if (storedUser) setUser(JSON.parse(storedUser));
-        
-        // 최근 검색 기록 불러오기 (blob: URL은 새로고침 시 무효하므로 필터링)
-        try {
-            const storedHistory = localStorage.getItem('searchHistory');
-            if (storedHistory) {
-                const parsed = JSON.parse(storedHistory);
-                // blob: URL은 제외하고 유효한 URL만 유지
-                const validHistory = parsed.filter(item => 
-                    item.imageUrl && !item.imageUrl.startsWith('blob:')
-                );
-                setSearchHistory(validHistory);
-                // 필터링된 결과 다시 저장
-                if (validHistory.length !== parsed.length) {
-                    localStorage.setItem('searchHistory', JSON.stringify(validHistory));
-                }
-            }
-        } catch (e) {
-            console.error('검색 기록 로드 실패:', e);
-            localStorage.removeItem('searchHistory');
-        }
     }, []);
-
-    // 검색 기록 저장 함수 (이미지를 base64로 변환하여 저장)
-    const saveToHistory = async (imageUrl, resultCount) => {
-        try {
-            // blob URL을 base64로 변환
-            let base64Url = imageUrl;
-            if (imageUrl.startsWith('blob:')) {
-                const response = await fetch(imageUrl);
-                const blob = await response.blob();
-                base64Url = await new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.readAsDataURL(blob);
-                });
-            }
-            
-            const newEntry = {
-                id: Date.now(),
-                imageUrl: base64Url,
-                resultCount,
-                timestamp: new Date().toISOString(),
-            };
-            
-            const updatedHistory = [newEntry, ...searchHistory].slice(0, 6); // 최대 6개 유지
-            setSearchHistory(updatedHistory);
-            localStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
-        } catch (e) {
-            console.error('검색 기록 저장 실패:', e);
-        }
-    };
-
-    // 검색 기록 삭제 함수
-    const clearHistory = () => {
-        setSearchHistory([]);
-        localStorage.removeItem('searchHistory');
-        toast.success('검색 기록이 삭제되었습니다.');
-    };
-
-    // 검색 기록에서 이미지 선택
-    const selectFromHistory = (imageUrl) => {
-        setPreview(imageUrl);
-        setOriginalPreview(imageUrl);
-        setResults([]);
-        setVisualMatches([]);
-        setSearchInfo(null);
-        // URL에서 파일 객체 생성 (재검색용)
-        fetch(imageUrl)
-            .then(res => res.blob())
-            .then(blob => {
-                const file = new File([blob], 'history-image.jpg', { type: 'image/jpeg' });
-                setFile(file);
-            })
-            .catch(() => toast.error('이미지를 불러올 수 없습니다.'));
-    };
 
     // 2. 드래그 앤 드롭 설정
     const onDrop = (acceptedFiles) => {
@@ -167,12 +90,6 @@ export default function Home() {
                 totalCount: response.data.count,
                 visualCount: (response.data.visualMatches || []).length,
             });
-
-            // 검색 기록 저장 (미리보기 이미지와 결과 개수)
-            if (preview) {
-                const totalResults = (response.data.results || []).length + (response.data.visualMatches || []).length;
-                saveToHistory(preview, totalResults);
-            }
 
         } catch (error) {
             console.error(error);
@@ -291,51 +208,6 @@ export default function Home() {
                         ) : "최저가 찾기 (Search)"}
                     </button>
                 </div>
-
-                {/* 최근 검색 기록 섹션 */}
-                {searchHistory.length > 0 && !loading && results.length === 0 && visualMatches.length === 0 && (
-                    <div className="max-w-4xl mx-auto mb-16">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="flex items-center gap-2 text-lg font-bold text-gray-800">
-                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                최근 검색 기록
-                            </h3>
-                            <button 
-                                onClick={clearHistory}
-                                className="text-sm text-gray-400 hover:text-red-500 transition-colors"
-                            >
-                                전체 삭제
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6">
-                            {searchHistory.map((item) => (
-                                <div 
-                                    key={item.id}
-                                    onClick={() => selectFromHistory(item.imageUrl)}
-                                    className="relative overflow-hidden bg-white border border-gray-200 cursor-pointer group rounded-xl hover:border-blue-400 hover:shadow-md transition-all"
-                                >
-                                    <div className="aspect-square">
-                                        <img 
-                                            src={item.imageUrl} 
-                                            alt="검색 기록" 
-                                            className="object-cover w-full h-full"
-                                        />
-                                    </div>
-                                    <div className="absolute inset-0 flex items-center justify-center transition-opacity bg-black opacity-0 bg-opacity-40 group-hover:opacity-100">
-                                        <span className="px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded-full">
-                                            다시 검색
-                                        </span>
-                                    </div>
-                                    <div className="absolute px-2 py-1 text-xs text-white rounded-full bottom-2 right-2 bg-black/60">
-                                        {item.resultCount}개
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
 
                 {/* 1.5. 결과 없음 안내 (추가된 부분) */}
                 {/* 로딩도 아니고, 결과도 비어있고, 검색을 시도한 적이 있을 때만 표시 */}
