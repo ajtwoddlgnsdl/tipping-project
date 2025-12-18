@@ -262,52 +262,50 @@ const searchGoogleShopping = async (keyword) => {
 };
 
 // ============================================
-// 다나와 검색
+// 네이버 쇼핑 API
 // ============================================
 
-const searchDanawa = async (keyword) => {
-  if (!keyword) return [];
+const searchNaverShopping = async (keyword) => {
+  const clientId = process.env.NAVER_CLIENT_ID;
+  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  
+  if (!clientId || !clientSecret || !keyword) {
+    console.log('[네이버] API 키 없음 또는 키워드 없음');
+    return [];
+  }
 
   try {
-    console.log(`[다나와] 검색: "${keyword}"`);
-    const { data } = await axios.get(
-      `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(keyword)}&tab=main&sort=lowprice`,
-      {
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Language': 'ko-KR,ko;q=0.9',
-          'Referer': 'https://www.danawa.com/',
-        }
-      }
-    );
-
-    const $ = cheerio.load(data);
-    const results = [];
-
-    $('li.prod_item, div.prod_item, ul.product_list li').slice(0, 10).each((_, el) => {
-      const $el = $(el);
-      const title = $el.find('.prod_name a, [class*="prod_name"]').text().trim();
-      const link = $el.find('.prod_name a, .prod_info a, a').first().attr('href') || '';
-      const price = parseInt($el.find('.price_sect strong, [class*="price"] strong').text().replace(/\D/g, '')) || 0;
-      const image = $el.find('.thumb_image img').attr('src') || $el.find('img').first().attr('src') || '';
-
-      if (title && link) {
-        results.push({
-          name: cleanQuery(title).substring(0, 100),
-          price,
-          link: link.startsWith('http') ? link : `https://prod.danawa.com${link}`,
-          image: image.startsWith('//') ? `https:${image}` : image,
-          source: '다나와',
-          type: 'shopping',
-        });
-      }
+    console.log(`[네이버] 검색: "${keyword}"`);
+    const { data } = await axios.get('https://openapi.naver.com/v1/search/shop.json', {
+      params: {
+        query: keyword,
+        display: 20,  // 최대 100개
+        sort: 'sim',  // sim(정확도), date(날짜), asc(가격낮은순), dsc(가격높은순)
+      },
+      headers: {
+        'X-Naver-Client-Id': clientId,
+        'X-Naver-Client-Secret': clientSecret,
+      },
+      timeout: 10000,
     });
 
-    console.log(`[다나와] ${results.length}개 상품`);
+    const results = (data.items || []).map(item => ({
+      name: cleanQuery(item.title.replace(/<[^>]*>/g, '')).substring(0, 100), // HTML 태그 제거
+      price: parseInt(item.lprice) || 0,  // 최저가
+      priceHigh: parseInt(item.hprice) || 0, // 최고가
+      link: item.link || '',
+      image: item.image || '',
+      mallName: item.mallName || '네이버쇼핑',
+      source: item.mallName || '네이버쇼핑',
+      brand: item.brand || '',
+      category: item.category1 || '',
+      type: 'shopping',
+    }));
+
+    console.log(`[네이버] ${results.length}개 상품`);
     return results;
   } catch (error) {
-    console.error('[다나와] 에러:', error.message);
+    console.error('[네이버] 에러:', error.response?.data || error.message);
     return [];
   }
 };
@@ -339,7 +337,7 @@ const uploadImage = async (filePath) => {
 };
 
 // ============================================
-// 통합 쇼핑몰 검색
+// 통합 쇼핑몰 검색 (네이버 쇼핑 사용)
 // ============================================
 
 const searchAllMalls = async (keywords, koreanKeywords = []) => {
@@ -348,33 +346,38 @@ const searchAllMalls = async (keywords, koreanKeywords = []) => {
 
   if (!keywordList[0]) return [];
 
-  console.log(`\n=== 쇼핑몰 검색 ===`);
+  console.log(`\n=== 쇼핑몰 검색 (네이버) ===`);
   console.log(`키워드: ${keywordList.slice(0, 3).join(' | ')}`);
 
-  // 다나와 검색 (가장 안정적)
-  const searchPromises = keywordList.slice(0, 3).map(kw => searchDanawa(kw));
+  // 네이버 쇼핑 검색
+  const searchPromises = [];
+  
+  // 영문 키워드 검색
+  keywordList.slice(0, 3).forEach(kw => {
+    searchPromises.push(searchNaverShopping(kw));
+  });
 
-  // 한글 키워드도 추가 검색
+  // 한글 키워드 추가 검색 (중복 제외)
   koreanList.slice(0, 2).forEach(kw => {
     if (!keywordList.some(k => k.toLowerCase() === kw.toLowerCase())) {
-      searchPromises.push(searchDanawa(kw));
+      searchPromises.push(searchNaverShopping(kw));
     }
   });
 
   const allResults = await Promise.all(searchPromises);
   let results = allResults.flat();
 
-  // 중복 제거 (URL 기준)
+  // 중복 제거 (상품명 + 가격 기준)
   const seen = new Set();
   results = results.filter(item => {
-    if (!item?.link) return false;
-    const key = item.link.split('?')[0].toLowerCase();
+    if (!item?.name) return false;
+    const key = `${item.name.substring(0, 30)}_${item.price}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  // 가격순 정렬
+  // 가격순 정렬 (가격 있는 것 우선, 낮은 가격순)
   results.sort((a, b) => {
     if (a.price > 0 && b.price === 0) return -1;
     if (a.price === 0 && b.price > 0) return 1;
