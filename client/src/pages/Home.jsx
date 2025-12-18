@@ -119,12 +119,13 @@ export default function Home() {
 
             {/* 헤더 (네비게이션) */}
             <nav className="bg-gray-900">
-                <div className="flex items-center justify-between px-6 py-4 mx-auto max-w-7xl">
+                <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
                     <img 
                         src={import.meta.env.BASE_URL + 'logo.png'} 
                         alt="Tipping" 
                         className="h-12 cursor-pointer" 
                         onClick={() => window.location.reload()}
+                        draggable="false"
                     />
                     <div>
                         {user ? (
@@ -137,10 +138,10 @@ export default function Home() {
 
                                 <span className="ml-2 text-gray-600">|</span>
                                 <span className="text-gray-300"><b>{user.nickname}</b>님</span>
-                                <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-red-400">로그아웃</button>
+                                <button onClick={handleLogout} className="text-sm font-semibold text-gray-400 hover:text-red-400">로그아웃</button>
                             </div>
                         ) : (
-                            <Link to="/login" className="font-medium text-gray-300 hover:text-white">로그인</Link>
+                            <Link to="/login" className="font-bold text-white hover:text-blue-300">로그인</Link>
                         )}
                     </div>
                 </div>
@@ -150,22 +151,22 @@ export default function Home() {
             <main className="px-4 mx-auto mt-10 max-w-7xl">
 
                 {/* 1. 검색 영역 (중앙 정렬) */}
-                <div className="max-w-2xl mx-auto mb-16 text-center">
-                    <h2 className="mb-2 text-3xl font-bold text-gray-900">어떤 옷을 찾으시나요?</h2>
-                    <p className="mb-8 text-gray-500">이미지를 올리면 AI가 최저가를 찾아드립니다.</p>
+                <div className="max-w-3xl mx-auto mb-16 text-center">
+                    <h2 className="mb-3 text-4xl font-bold text-gray-900">어떤 옷을 찾으시나요?</h2>
+                    <p className="mb-10 text-lg text-gray-500">이미지를 올리면 AI가 최저가를 찾아드립니다.</p>
 
                     {/* 드래그 앤 드롭 박스 */}
                     <div
                         {...getRootProps()}
-                        className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-xl cursor-pointer transition-colors
+                        className={`flex flex-col items-center justify-center w-full h-80 border-2 border-dashed rounded-2xl cursor-pointer transition-colors
               ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white hover:border-blue-400'}`}
                     >
                         <input {...getInputProps()} />
 
                         {preview ? (
                             // 이미지가 선택되었을 때 미리보기
-                            <div className="relative w-full h-full p-2">
-                                <img src={preview} alt="Preview" className="object-contain w-full h-full rounded-lg" />
+                            <div className="relative w-full h-full p-4">
+                                <img src={preview} alt="Preview" className="object-contain w-full h-full rounded-xl" draggable="false" />
                                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-20 transition-all">
                                     <span className="px-3 py-1 text-xs text-white bg-black rounded-full bg-opacity-60 opacity-0 hover:opacity-100 transition-opacity">클릭하여 이미지 변경</span>
                                 </div>
@@ -182,12 +183,12 @@ export default function Home() {
                             </div>
                         ) : (
                             // 이미지가 없을 때 안내 문구
-                            <div className="flex flex-col items-center p-6 text-gray-500">
-                                <svg className="w-12 h-12 mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex flex-col items-center p-8 text-gray-500">
+                                <svg className="w-16 h-16 mb-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                                 </svg>
-                                <p className="font-medium">클릭하여 이미지 업로드</p>
-                                <p className="text-sm">또는 여기로 파일을 끌어오세요</p>
+                                <p className="text-lg font-medium">클릭하여 이미지 업로드</p>
+                                <p className="mt-1 text-base">또는 여기로 파일을 끌어오세요</p>
                             </div>
                         )}
                     </div>
@@ -196,19 +197,19 @@ export default function Home() {
                     <button
                         onClick={handleSearch}
                         disabled={!file || loading}
-                        className={`w-full py-4 mt-6 text-lg font-bold text-white rounded-xl transition-all shadow-lg
+                        className={`w-full py-5 mt-8 text-xl font-bold text-white rounded-2xl transition-all shadow-lg
               ${!file ? 'bg-gray-300 cursor-not-allowed' :
                                 loading ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl'}`}
                     >
                         {loading ? (
                             <span className="flex items-center justify-center gap-2">
-                                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                                <svg className="w-6 h-6 animate-spin" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                 </svg>
                                 AI가 열심히 찾는 중...
                             </span>
-                        ) : "최저가 찾기 (Search)"}
+                        ) : "최저가 찾기"}
                     </button>
                 </div>
 

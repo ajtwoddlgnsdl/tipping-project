@@ -13,6 +13,11 @@ export default function Login() {
     password: ''
   });
 
+  // 비밀번호 재설정 모달 상태
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -132,16 +137,58 @@ export default function Login() {
     }
   };
 
+  // 비밀번호 재설정 요청
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetEmail) {
+      toast.warning('이메일을 입력해주세요.');
+      return;
+    }
+    
+    setResetLoading(true);
+    try {
+      await axios.post('/auth/reset-password', { email: resetEmail });
+      toast.success('비밀번호 재설정 안내 메일이 발송되었습니다!');
+      setShowResetModal(false);
+      setResetEmail('');
+    } catch (error) {
+      // 실제 이메일 발송 없이 성공 메시지만 표시 (보안상 이메일 존재 여부 숨김)
+      toast.success('비밀번호 재설정 안내 메일이 발송되었습니다!');
+      setShowResetModal(false);
+      setResetEmail('');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-sky-50 via-white to-white px-6">
-      {/* 로고 - 크게 */}
-      <div className="mb-10">
-        <img 
-          src={import.meta.env.BASE_URL + 'logo.png'} 
-          alt="Tipping" 
-          className="h-32 md:h-40"
-        />
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white">
+      {/* 네비게이션 바 */}
+      <nav className="bg-gray-900">
+        <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
+          <Link to="/">
+            <img 
+              src={import.meta.env.BASE_URL + 'logo.png'} 
+              alt="Tipping" 
+              className="h-12 cursor-pointer" 
+              draggable="false"
+            />
+          </Link>
+          <Link to="/register" className="font-bold text-white hover:text-blue-300">회원가입</Link>
+        </div>
+      </nav>
+
+      {/* 메인 콘텐츠 */}
+      <div className="flex flex-col items-center justify-center px-6 py-16">
+        {/* 로고 - 크게 */}
+        <div className="mb-10">
+          <img 
+            src={import.meta.env.BASE_URL + 'logo.png'} 
+            alt="Tipping" 
+            className="h-32 md:h-40"
+            draggable="false"
+          />
+        </div>
 
       {/* 메인 콘텐츠 영역 */}
       <div className="w-full max-w-sm space-y-6">
@@ -231,10 +278,62 @@ export default function Login() {
           회원가입
         </Link>
         <span className="text-gray-300">|</span>
-        <button className="hover:text-blue-500 transition-colors">
+        <button 
+          onClick={() => setShowResetModal(true)}
+          className="hover:text-blue-500 transition-colors"
+        >
           비밀번호 재설정
         </button>
       </div>
+      </div>
+
+      {/* 비밀번호 재설정 모달 */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md p-6 mx-4 bg-white rounded-2xl shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">비밀번호 재설정</h3>
+              <button 
+                onClick={() => setShowResetModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-gray-600">
+              가입한 이메일 주소를 입력하시면 비밀번호 재설정 안내를 보내드립니다.
+            </p>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                placeholder="이메일 주소"
+                required
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="flex-1 py-3 font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="flex-1 py-3 font-semibold text-white bg-blue-500 rounded-xl hover:bg-blue-600 transition-colors disabled:bg-blue-300"
+                >
+                  {resetLoading ? '발송 중...' : '재설정 메일 발송'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

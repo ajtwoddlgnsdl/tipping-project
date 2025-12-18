@@ -38,14 +38,15 @@ export default function Wishlist() {
     <div className="min-h-screen pb-20 bg-gray-50">
       {/* 헤더 */}
       <nav className="bg-gray-900">
-        <div className="flex items-center justify-between px-6 py-4 mx-auto max-w-7xl">
+        <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
           <img 
             src={import.meta.env.BASE_URL + 'logo.png'} 
             alt="Tipping" 
             className="h-12 cursor-pointer" 
             onClick={() => navigate('/')}
+            draggable="false"
           />
-          <button onClick={() => navigate('/')} className="font-medium text-gray-300 hover:text-white">
+          <button onClick={() => navigate('/')} className="font-bold text-white hover:text-blue-300">
             ← 검색으로 돌아가기
           </button>
         </div>
