@@ -135,9 +135,13 @@ export default function Login() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
-        <h2 className="mb-6 text-3xl font-bold text-center text-gray-800">
-          Tipping 로그인
-        </h2>
+        <div className="flex justify-center mb-6">
+          <img 
+            src={import.meta.env.BASE_URL + 'logo.png'} 
+            alt="Tipping" 
+            className="h-16"
+          />
+        </div>
 
         {/* 1. 일반 로그인 폼 */}
         <form onSubmit={handleLogin} className="space-y-6">

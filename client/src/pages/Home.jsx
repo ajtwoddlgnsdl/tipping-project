@@ -120,9 +120,12 @@ export default function Home() {
             {/* 헤더 (네비게이션) */}
             <nav className="bg-white shadow-sm">
                 <div className="flex items-center justify-between px-4 py-4 mx-auto max-w-7xl">
-                    <h1 className="text-2xl font-extrabold text-blue-600 cursor-pointer" onClick={() => window.location.reload()}>
-                        Tipping
-                    </h1>
+                    <img 
+                        src={import.meta.env.BASE_URL + 'logo.png'} 
+                        alt="Tipping" 
+                        className="h-10 cursor-pointer" 
+                        onClick={() => window.location.reload()}
+                    />
                     <div>
                         {user ? (
                             <div className="flex items-center gap-4">
