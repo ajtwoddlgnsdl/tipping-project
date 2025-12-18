@@ -119,7 +119,7 @@ export default function Home() {
 
             {/* 헤더 (네비게이션) */}
             <nav className="bg-black">
-                <div className="flex items-center justify-between px-4 py-4 mx-auto">
+                <div className="flex items-center justify-between px-6 py-4 mx-auto">
                     <img 
                         src={import.meta.env.BASE_URL + 'logo.png'} 
                         alt="Tipping" 
