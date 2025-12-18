@@ -116,7 +116,9 @@ export default function Login() {
   const handleKakaoCallback = async (code) => {
     try {
       console.log("카카오 인가 코드 수신:", code);
-      const response = await axios.post('/auth/kakao', { code });
+      // 서버에 redirect_uri도 함께 전달 (GitHub Pages / Vercel 구분용)
+      const redirectUri = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, '') + '/login';
+      const response = await axios.post('/auth/kakao', { code, redirectUri });
       
       const { token, user } = response.data;
       localStorage.setItem('token', token);

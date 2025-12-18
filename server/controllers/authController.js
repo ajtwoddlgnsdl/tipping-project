@@ -147,15 +147,17 @@ exports.googleLogin = async (req, res) => {
 // 👇 [추가] 카카오 로그인 처리 (인가 코드 방식)
 exports.kakaoLogin = async (req, res) => {
   try {
-    const { code, token } = req.body; // code: 인가코드 방식, token: 액세스토큰 방식 (하위 호환)
+    const { code, token, redirectUri } = req.body; // code: 인가코드 방식, token: 액세스토큰 방식, redirectUri: 클라이언트에서 전달
 
     let accessToken = token;
 
     // 인가 코드 방식인 경우 (code가 있으면)
     if (code) {
       console.log("카카오 인가 코드 수신:", code);
+      console.log("사용할 redirect_uri:", redirectUri);
       
       // 1. 인가 코드로 액세스 토큰 발급
+      // redirectUri는 클라이언트에서 전달받은 값 사용 (GitHub Pages / Vercel 구분)
       const tokenResponse = await axios.post(
         'https://kauth.kakao.com/oauth/token',
         null,
@@ -163,7 +165,7 @@ exports.kakaoLogin = async (req, res) => {
           params: {
             grant_type: 'authorization_code',
             client_id: process.env.KAKAO_REST_API_KEY,
-            redirect_uri: process.env.KAKAO_REDIRECT_URI || 'http://localhost:5173/login',
+            redirect_uri: redirectUri || process.env.KAKAO_REDIRECT_URI || 'http://localhost:5173/login',
             code: code,
           },
           headers: {
