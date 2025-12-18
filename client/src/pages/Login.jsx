@@ -85,8 +85,12 @@ export default function Login() {
     try {
       // 카카오 SDK 2.x 새로운 방식: loginForm() 또는 authorize() 사용
       // scope: 받아올 정보 (닉네임, 이메일 등)
+      // GitHub Pages에서는 /tipping-project/login, Vercel에서는 /login
+      const redirectUri = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, '') + '/login';
+      console.log("카카오 redirectUri:", redirectUri);
+      
       window.Kakao.Auth.authorize({
-        redirectUri: window.location.origin + '/login', // 현재 페이지로 리다이렉트
+        redirectUri: redirectUri,
         scope: 'profile_nickname,account_email',
       });
     } catch (error) {
