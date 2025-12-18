@@ -262,55 +262,6 @@ const searchGoogleShopping = async (keyword) => {
 };
 
 // ============================================
-// 네이버 쇼핑 API
-// ============================================
-
-const searchNaverShopping = async (keyword) => {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
-  
-  if (!clientId || !clientSecret || !keyword) {
-    console.log('[네이버] API 키 없음 또는 키워드 없음');
-    return [];
-  }
-
-  try {
-    console.log(`[네이버] 검색: "${keyword}"`);
-    const { data } = await axios.get('https://openapi.naver.com/v1/search/shop.json', {
-      params: {
-        query: keyword,
-        display: 20,  // 최대 100개
-        sort: 'sim',  // sim(정확도), date(날짜), asc(가격낮은순), dsc(가격높은순)
-      },
-      headers: {
-        'X-Naver-Client-Id': clientId,
-        'X-Naver-Client-Secret': clientSecret,
-      },
-      timeout: 10000,
-    });
-
-    const results = (data.items || []).map(item => ({
-      name: cleanQuery(item.title.replace(/<[^>]*>/g, '')).substring(0, 100), // HTML 태그 제거
-      price: parseInt(item.lprice) || 0,  // 최저가
-      priceHigh: parseInt(item.hprice) || 0, // 최고가
-      link: item.link || '',
-      image: item.image || '',
-      mallName: item.mallName || '네이버쇼핑',
-      source: item.mallName || '네이버쇼핑',
-      brand: item.brand || '',
-      category: item.category1 || '',
-      type: 'shopping',
-    }));
-
-    console.log(`[네이버] ${results.length}개 상품`);
-    return results;
-  } catch (error) {
-    console.error('[네이버] 에러:', error.response?.data || error.message);
-    return [];
-  }
-};
-
-// ============================================
 // ImgBB 업로드
 // ============================================
 
@@ -334,58 +285,6 @@ const uploadImage = async (filePath) => {
   if (!data?.data?.url) throw new Error('ImgBB 응답 오류');
   console.log('[ImgBB] 업로드 완료');
   return data.data.url;
-};
-
-// ============================================
-// 통합 쇼핑몰 검색 (네이버 쇼핑 사용)
-// ============================================
-
-const searchAllMalls = async (keywords, koreanKeywords = []) => {
-  const keywordList = Array.isArray(keywords) ? keywords : [keywords];
-  const koreanList = Array.isArray(koreanKeywords) ? koreanKeywords : (koreanKeywords ? [koreanKeywords] : []);
-
-  if (!keywordList[0]) return [];
-
-  console.log(`\n=== 쇼핑몰 검색 (네이버) ===`);
-  console.log(`키워드: ${keywordList.slice(0, 3).join(' | ')}`);
-
-  // 네이버 쇼핑 검색
-  const searchPromises = [];
-  
-  // 영문 키워드 검색
-  keywordList.slice(0, 3).forEach(kw => {
-    searchPromises.push(searchNaverShopping(kw));
-  });
-
-  // 한글 키워드 추가 검색 (중복 제외)
-  koreanList.slice(0, 2).forEach(kw => {
-    if (!keywordList.some(k => k.toLowerCase() === kw.toLowerCase())) {
-      searchPromises.push(searchNaverShopping(kw));
-    }
-  });
-
-  const allResults = await Promise.all(searchPromises);
-  let results = allResults.flat();
-
-  // 중복 제거 (상품명 + 가격 기준)
-  const seen = new Set();
-  results = results.filter(item => {
-    if (!item?.name) return false;
-    const key = `${item.name.substring(0, 30)}_${item.price}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
-  // 가격순 정렬 (가격 있는 것 우선, 낮은 가격순)
-  results.sort((a, b) => {
-    if (a.price > 0 && b.price === 0) return -1;
-    if (a.price === 0 && b.price > 0) return 1;
-    return a.price - b.price;
-  });
-
-  console.log(`=== 총 ${results.length}개 상품 ===\n`);
-  return results;
 };
 
 // ============================================
@@ -466,15 +365,14 @@ exports.searchImage = async (req, res) => {
       });
     }
 
-    // 4. 쇼핑 검색 (병렬)
-    console.log(`[4] 쇼핑몰 검색 중...`);
-    const [mallResults, ...googleResults] = await Promise.all([
-      searchAllMalls(searchKeywords.slice(0, 3), koreanKeywords.slice(0, 2)),
-      ...searchKeywords.slice(0, 5).map(kw => searchGoogleShopping(kw)),
-    ]);
+    // 4. Google Shopping 검색 (SerpAPI 결과와 함께)
+    console.log(`[4] Google Shopping 검색 중...`);
+    const googleResults = await Promise.all(
+      searchKeywords.slice(0, 5).map(kw => searchGoogleShopping(kw))
+    );
 
-    // 결과 통합
-    let allResults = [...mallResults, ...googleResults.flat(), ...serp.shopping];
+    // 결과 통합 (SerpAPI shopping + Google Shopping)
+    let allResults = [...serp.shopping, ...googleResults.flat()];
 
     // 중복 제거
     const seen = new Set();
@@ -537,7 +435,7 @@ exports.searchByKeyword = async (req, res) => {
     if (!keyword) return res.status(400).json({ error: "키워드가 필요합니다." });
 
     console.log(`키워드 검색: "${keyword}"`);
-    const results = await searchAllMalls([keyword], [toKorean(keyword)]);
+    const results = await searchGoogleShopping(keyword);
 
     res.json({
       success: true,
