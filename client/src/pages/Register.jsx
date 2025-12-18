@@ -65,7 +65,7 @@ export default function Register() {
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white">
       {/* 네비게이션 바 */}
       <nav className="bg-black">
-        <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
+        <div className="flex items-center justify-between px-4 py-4 mx-auto">
           <Link to="/">
             <img 
               src={import.meta.env.BASE_URL + 'logo.png'} 

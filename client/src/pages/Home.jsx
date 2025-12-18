@@ -119,7 +119,7 @@ export default function Home() {
 
             {/* 헤더 (네비게이션) */}
             <nav className="bg-black">
-                <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
+                <div className="flex items-center justify-between px-4 py-4 mx-auto">
                     <img 
                         src={import.meta.env.BASE_URL + 'logo.png'} 
                         alt="Tipping" 
@@ -141,7 +141,7 @@ export default function Home() {
                                 <button onClick={handleLogout} className="text-sm font-semibold text-gray-400 hover:text-red-400">로그아웃</button>
                             </div>
                         ) : (
-                            <Link to="/login" className="px-4 py-2 text-lg font-bold text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors">로그인</Link>
+                            <Link to="/login" className="text-lg font-bold text-white hover:text-blue-300 transition-colors">로그인</Link>
                         )}
                     </div>
                 </div>

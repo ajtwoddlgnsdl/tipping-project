@@ -38,7 +38,7 @@ export default function Wishlist() {
     <div className="min-h-screen pb-20 bg-gray-50">
       {/* 헤더 */}
       <nav className="bg-black">
-        <div className="flex items-center justify-between px-8 md:px-12 py-4 mx-auto max-w-7xl">
+        <div className="flex items-center justify-between px-4 py-4 mx-auto">
           <img 
             src={import.meta.env.BASE_URL + 'logo.png'} 
             alt="Tipping" 
