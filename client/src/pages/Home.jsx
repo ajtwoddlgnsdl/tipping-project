@@ -31,23 +31,55 @@ export default function Home() {
         const storedUser = localStorage.getItem('user');
         if (storedUser) setUser(JSON.parse(storedUser));
         
-        // 최근 검색 기록 불러오기
-        const storedHistory = localStorage.getItem('searchHistory');
-        if (storedHistory) setSearchHistory(JSON.parse(storedHistory));
+        // 최근 검색 기록 불러오기 (blob: URL은 새로고침 시 무효하므로 필터링)
+        try {
+            const storedHistory = localStorage.getItem('searchHistory');
+            if (storedHistory) {
+                const parsed = JSON.parse(storedHistory);
+                // blob: URL은 제외하고 유효한 URL만 유지
+                const validHistory = parsed.filter(item => 
+                    item.imageUrl && !item.imageUrl.startsWith('blob:')
+                );
+                setSearchHistory(validHistory);
+                // 필터링된 결과 다시 저장
+                if (validHistory.length !== parsed.length) {
+                    localStorage.setItem('searchHistory', JSON.stringify(validHistory));
+                }
+            }
+        } catch (e) {
+            console.error('검색 기록 로드 실패:', e);
+            localStorage.removeItem('searchHistory');
+        }
     }, []);
 
-    // 검색 기록 저장 함수
-    const saveToHistory = (imageUrl, resultCount) => {
-        const newEntry = {
-            id: Date.now(),
-            imageUrl,
-            resultCount,
-            timestamp: new Date().toISOString(),
-        };
-        
-        const updatedHistory = [newEntry, ...searchHistory].slice(0, 6); // 최대 6개 유지
-        setSearchHistory(updatedHistory);
-        localStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
+    // 검색 기록 저장 함수 (이미지를 base64로 변환하여 저장)
+    const saveToHistory = async (imageUrl, resultCount) => {
+        try {
+            // blob URL을 base64로 변환
+            let base64Url = imageUrl;
+            if (imageUrl.startsWith('blob:')) {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                base64Url = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                });
+            }
+            
+            const newEntry = {
+                id: Date.now(),
+                imageUrl: base64Url,
+                resultCount,
+                timestamp: new Date().toISOString(),
+            };
+            
+            const updatedHistory = [newEntry, ...searchHistory].slice(0, 6); // 최대 6개 유지
+            setSearchHistory(updatedHistory);
+            localStorage.setItem('searchHistory', JSON.stringify(updatedHistory));
+        } catch (e) {
+            console.error('검색 기록 저장 실패:', e);
+        }
     };
 
     // 검색 기록 삭제 함수
