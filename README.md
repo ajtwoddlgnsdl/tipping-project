@@ -34,7 +34,7 @@
 
 | 환경 | URL |
 |------|-----|
-| **🚀 Vercel (메인)** | [https://tipping-project.vercel.app](https://tipping-project.vercel.app) |
+| **🚀 Vercel (메인)** | [https://tipping-project-seven.vercel.app](https://tipping-project-seven.vercel.app) |
 | **📄 GitHub Pages** | [https://ajtwoddlgnsdl.github.io/tipping-project](https://ajtwoddlgnsdl.github.io/tipping-project) |
 
 > ⚠️ **권장**: Vercel 배포 버전을 사용해주세요. GitHub Pages는 시험 제출용으로 설정되어 있습니다.
