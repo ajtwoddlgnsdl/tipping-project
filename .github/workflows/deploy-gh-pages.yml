@@ -42,8 +42,10 @@ jobs:
           npm run build
         env:
           GITHUB_PAGES: 'true'
-          # Vercel에서 사용하는 환경변수들도 여기에 추가 가능
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # 환경변수 설정 (GitHub Variables 또는 직접 설정)
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://tipping-server.onrender.com/api' }}
+          VITE_KAKAO_JAVASCRIPT_KEY: ${{ vars.VITE_KAKAO_JAVASCRIPT_KEY || '0060b71acbef36dda22bc99558cca8d3' }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID || '867949810382-vrf2c4o1u3rin573ikhdt5n9gv87qltj.apps.googleusercontent.com' }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
