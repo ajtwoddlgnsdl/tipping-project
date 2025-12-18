@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 로고 및 이미지 드래그/선택 방지 */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 /* 애니메이션 */
 @keyframes fadeIn {
   from {

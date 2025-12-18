@@ -165,7 +165,7 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white">
       {/* 네비게이션 바 */}
       <nav className="bg-black">
-        <div className="flex items-center justify-between px-6 py-4 mx-auto">
+        <div className="flex items-center justify-between px-8 py-4 mx-auto">
           <Link to="/">
             <img 
               src={import.meta.env.BASE_URL + 'logo.png'} 

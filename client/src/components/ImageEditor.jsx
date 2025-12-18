@@ -414,9 +414,6 @@ export default function ImageEditor({ imageUrl, onSave, onCancel }) {
                   <span className="text-xs text-gray-400">2배 확대</span>
                 </button>
               </div>
-              <p className="text-xs text-center text-gray-400">
-                💡 누끼 기능은 서버 API가 필요합니다 (remove.bg API 키 설정 필요)
-              </p>
             </div>
           )}
         </div>
