@@ -9,8 +9,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Wishlist from './pages/Wishlist';
 
-// GitHub Pages 배포 시 basename 설정
-const basename = import.meta.env.BASE_URL;
+// GitHub Pages 배포 시 basename 설정 (BASE_URL에서 trailing slash 제거)
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
 function App() {
   return (
