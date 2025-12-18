@@ -9,9 +9,12 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Wishlist from './pages/Wishlist';
 
+// GitHub Pages 배포 시 basename 설정
+const basename = import.meta.env.BASE_URL;
+
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       {/* 👇 [추가] 알림판 설치 (위치, 시간 설정 등) */}
       <ToastContainer 
         position="top-center" // 화면 상단 중앙에 뜸
